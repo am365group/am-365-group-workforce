@@ -41,7 +41,7 @@ export function AdminSidebar() {
   const location = useLocation();
 
   const renderGroup = (label: string, items: typeof mainItems) => (
-    <SidebarGroup defaultOpen>
+    <SidebarGroup>
       <SidebarGroupLabel className="text-sidebar-foreground/40 text-xs uppercase tracking-wider">
         {label}
       </SidebarGroupLabel>

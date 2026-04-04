@@ -44,7 +44,7 @@ export function PartnerSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup defaultOpen>
+        <SidebarGroup>
           <SidebarGroupLabel className="text-sidebar-foreground/40 text-xs uppercase tracking-wider">
             Menu
           </SidebarGroupLabel>
