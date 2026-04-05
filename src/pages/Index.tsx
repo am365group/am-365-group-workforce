@@ -2,11 +2,11 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowRight, Users, Shield, DollarSign, Truck, CheckCircle, Building2, Globe } from "lucide-react";
+import { ArrowRight, Users, Shield, DollarSign, Truck, Building2, Globe } from "lucide-react";
 
 const features = [
   { icon: Users, title: "Employer of Record", description: "We handle payroll, taxes, insurance, and compliance so delivery partners can focus on what they do best." },
-  { icon: Shield, title: "BankID Verification", description: "Seamless identity verification using Swedish BankID for fast, secure onboarding of new delivery partners." },
+  { icon: Shield, title: "Secure Verification", description: "Identity verification using Swedish ID for fast, secure onboarding of new delivery partners." },
   { icon: DollarSign, title: "Automated Payroll", description: "Automatic salary calculations, tax withholding, pension contributions, and timely payouts every month." },
   { icon: Truck, title: "Platform Integration", description: "Direct API integration with Wolt, Foodora, and other delivery platforms for real-time data synchronization." },
 ];
@@ -41,7 +41,9 @@ export default function Index() {
               <Button variant="outline" size="sm">Partner Login</Button>
             </Link>
             <Link to="/register">
-              <Button size="sm">Join as Partner <ArrowRight className="ml-1.5 h-4 w-4" /></Button>
+              <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90">
+                Join as Partner <ArrowRight className="ml-1.5 h-4 w-4" />
+              </Button>
             </Link>
           </div>
         </div>
@@ -65,7 +67,7 @@ export default function Index() {
             </p>
             <div className="flex flex-wrap gap-4">
               <Link to="/register">
-                <Button size="lg" className="text-base px-8 h-12">
+                <Button size="lg" className="text-base px-8 h-12 bg-primary text-primary-foreground hover:bg-primary/90">
                   Register as Partner <ArrowRight className="ml-2 h-5 w-5" />
                 </Button>
               </Link>
@@ -136,20 +138,22 @@ export default function Index() {
 
       {/* CTA */}
       <section className="max-w-7xl mx-auto px-6 py-20">
-        <Card className="bg-foreground text-card overflow-hidden">
+        <Card className="bg-sidebar text-sidebar-foreground overflow-hidden">
           <CardContent className="p-12 lg:p-16 relative">
             <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-transparent" />
             <div className="relative max-w-2xl">
-              <h2 className="text-3xl lg:text-4xl font-bold text-white mb-4">Ready to get started?</h2>
-              <p className="text-lg text-white/70 mb-8">
+              <h2 className="text-3xl lg:text-4xl font-bold mb-4">Ready to get started?</h2>
+              <p className="text-lg opacity-70 mb-8">
                 Join hundreds of delivery partners across Sweden. Register today and start working with full employment benefits.
               </p>
               <div className="flex flex-wrap gap-4">
                 <Link to="/register">
-                  <Button size="lg" className="text-base px-8 h-12">Register Now <ArrowRight className="ml-2 h-5 w-5" /></Button>
+                  <Button size="lg" className="text-base px-8 h-12 bg-primary text-primary-foreground hover:bg-primary/90">
+                    Register Now <ArrowRight className="ml-2 h-5 w-5" />
+                  </Button>
                 </Link>
                 <Link to="/login">
-                  <Button variant="outline" size="lg" className="text-base px-8 h-12 border-white/20 text-white hover:bg-white/10">
+                  <Button variant="outline" size="lg" className="text-base px-8 h-12 border-sidebar-border text-sidebar-foreground hover:bg-sidebar-accent">
                     Partner Login
                   </Button>
                 </Link>
