@@ -104,7 +104,7 @@ export default function Register() {
             to: form.email,
             firstName: form.firstName,
             verificationCode,
-            applicationId: data.id,
+            applicationId,
           },
         });
       } catch (emailErr) {
