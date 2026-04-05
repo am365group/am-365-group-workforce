@@ -14,16 +14,237 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      onboarding_events: {
+        Row: {
+          application_id: string
+          created_at: string
+          event_type: string
+          id: string
+          notes: string | null
+          performed_by: string | null
+        }
+        Insert: {
+          application_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          notes?: string | null
+          performed_by?: string | null
+        }
+        Update: {
+          application_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          notes?: string | null
+          performed_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_events_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "partner_applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      partner_applications: {
+        Row: {
+          apartment: string | null
+          city: string
+          created_at: string
+          email: string
+          first_name: string
+          id: string
+          last_name: string
+          personal_number: string
+          phone: string
+          post_code: string
+          review_notes: string | null
+          reviewed_by: string | null
+          status: Database["public"]["Enums"]["application_status"]
+          street_address: string
+          transport: Database["public"]["Enums"]["transport_type"]
+          updated_at: string
+          user_id: string | null
+          verification_code: string | null
+          verification_expires_at: string | null
+          verified_at: string | null
+        }
+        Insert: {
+          apartment?: string | null
+          city: string
+          created_at?: string
+          email: string
+          first_name: string
+          id?: string
+          last_name: string
+          personal_number: string
+          phone: string
+          post_code: string
+          review_notes?: string | null
+          reviewed_by?: string | null
+          status?: Database["public"]["Enums"]["application_status"]
+          street_address: string
+          transport: Database["public"]["Enums"]["transport_type"]
+          updated_at?: string
+          user_id?: string | null
+          verification_code?: string | null
+          verification_expires_at?: string | null
+          verified_at?: string | null
+        }
+        Update: {
+          apartment?: string | null
+          city?: string
+          created_at?: string
+          email?: string
+          first_name?: string
+          id?: string
+          last_name?: string
+          personal_number?: string
+          phone?: string
+          post_code?: string
+          review_notes?: string | null
+          reviewed_by?: string | null
+          status?: Database["public"]["Enums"]["application_status"]
+          street_address?: string
+          transport?: Database["public"]["Enums"]["transport_type"]
+          updated_at?: string
+          user_id?: string | null
+          verification_code?: string | null
+          verification_expires_at?: string | null
+          verified_at?: string | null
+        }
+        Relationships: []
+      }
+      partner_contracts: {
+        Row: {
+          application_id: string
+          contract_content: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          partner_user_id: string | null
+          sent_at: string | null
+          signed_at: string | null
+          signing_link: string | null
+          status: Database["public"]["Enums"]["contract_status"]
+          updated_at: string
+        }
+        Insert: {
+          application_id: string
+          contract_content?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          partner_user_id?: string | null
+          sent_at?: string | null
+          signed_at?: string | null
+          signing_link?: string | null
+          status?: Database["public"]["Enums"]["contract_status"]
+          updated_at?: string
+        }
+        Update: {
+          application_id?: string
+          contract_content?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          partner_user_id?: string | null
+          sent_at?: string | null
+          signed_at?: string | null
+          signing_link?: string | null
+          status?: Database["public"]["Enums"]["contract_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partner_contracts_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "partner_applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          display_name: string | null
+          id: string
+          updated_at: string
+          user_id: string
+          user_type: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id: string
+          user_type?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id?: string
+          user_type?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "controller" | "verifier"
+      application_status:
+        | "pending"
+        | "email_verified"
+        | "under_review"
+        | "verified"
+        | "contract_sent"
+        | "contract_signed"
+        | "active"
+        | "rejected"
+      contract_status: "draft" | "sent" | "signed" | "expired"
+      transport_type: "bicycle" | "moped" | "car"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +371,20 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "controller", "verifier"],
+      application_status: [
+        "pending",
+        "email_verified",
+        "under_review",
+        "verified",
+        "contract_sent",
+        "contract_signed",
+        "active",
+        "rejected",
+      ],
+      contract_status: ["draft", "sent", "signed", "expired"],
+      transport_type: ["bicycle", "moped", "car"],
+    },
   },
 } as const
