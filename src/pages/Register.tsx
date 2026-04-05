@@ -102,9 +102,12 @@ export default function Register() {
         await supabase.functions.invoke("send-registration-email", {
           body: {
             to: form.email,
-            firstName: form.firstName,
-            verificationCode,
-            applicationId,
+            template: "registration",
+            data: {
+              firstName: form.firstName,
+              verificationCode,
+              applicationId,
+            },
           },
         });
       } catch (emailErr) {

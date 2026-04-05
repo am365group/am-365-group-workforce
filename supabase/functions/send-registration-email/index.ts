@@ -356,11 +356,14 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { to, template, data } = await req.json()
+    const body = await req.json()
+    console.log('Received body:', body)
+    const { to, template, data } = body
+    console.log('Parsed:', { to, template, data })
 
-    if (!to || !template) {
+    if (!to || !template || !data) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields: to, template' }),
+        JSON.stringify({ error: 'Missing required fields: to, template, data' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
