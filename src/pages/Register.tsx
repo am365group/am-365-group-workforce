@@ -70,14 +70,16 @@ export default function Register() {
 
     setIsSubmitting(true);
     try {
-      // Generate 6-digit verification code
+      // Generate 6-digit verification code and client-side ID
+      const applicationId = crypto.randomUUID();
       const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
       const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 min
 
       // Insert application into database
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("partner_applications")
         .insert({
+          id: applicationId,
           first_name: form.firstName,
           last_name: form.lastName,
           email: form.email,
@@ -91,9 +93,7 @@ export default function Register() {
           status: "pending",
           verification_code: verificationCode,
           verification_expires_at: expiresAt,
-        })
-        .select()
-        .single();
+        });
 
       if (error) throw error;
 
@@ -104,7 +104,7 @@ export default function Register() {
             to: form.email,
             firstName: form.firstName,
             verificationCode,
-            applicationId: data.id,
+            applicationId,
           },
         });
       } catch (emailErr) {
