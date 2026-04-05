@@ -4,149 +4,320 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Fingerprint, FileText, ArrowRight, ArrowLeft, Check } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { ArrowRight, ArrowLeft, User, MapPin, IdCard, Bike, Car, CheckCircle, Loader2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
-type RegistrationPath = null | "bankid" | "manual";
+const STEPS = [
+  { label: "Basic Information", icon: User },
+  { label: "Location", icon: MapPin },
+  { label: "Who am I?", icon: IdCard },
+  { label: "Transport", icon: Bike },
+];
+
+const transportOptions = [
+  { value: "bicycle", label: "Bicycle", icon: "🚲", description: "Eco-friendly city deliveries" },
+  { value: "moped", label: "Moped / Scooter", icon: "🛵", description: "Fast urban deliveries" },
+  { value: "car", label: "Car", icon: "🚗", description: "Larger deliveries & longer routes" },
+];
 
 export default function Register() {
-  const [path, setPath] = useState<RegistrationPath>(null);
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [animDir, setAnimDir] = useState<"left" | "right">("right");
   const navigate = useNavigate();
+  const { toast } = useToast();
 
-  if (!path) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-background">
-        <div className="w-full max-w-2xl">
-          <div className="text-center mb-8">
-            <div className="flex items-center justify-center gap-2 mb-4">
-              <div className="h-10 w-10 rounded-xl bg-primary flex items-center justify-center text-primary-foreground font-bold">AM</div>
-              <span className="text-2xl font-bold">AM:365</span>
-            </div>
-            <h1 className="text-3xl font-bold mb-2">Join as a Partner</h1>
-            <p className="text-muted-foreground">Choose your verification method to get started</p>
-          </div>
-          <div className="grid md:grid-cols-2 gap-4">
-            <Card className="cursor-pointer hover:border-primary hover:shadow-md transition-all" onClick={() => setPath("bankid")}>
-              <CardHeader className="text-center">
-                <div className="mx-auto h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-2">
-                  <Fingerprint className="h-8 w-8 text-primary" />
-                </div>
-                <CardTitle className="text-lg">BankID Verification</CardTitle>
-                <CardDescription>Fast-track with Swedish BankID. Instant identity verification.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2 text-sm text-muted-foreground">
-                  <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" /> Instant verification</li>
-                  <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" /> Auto-fill personal details</li>
-                  <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" /> Most secure option</li>
-                </ul>
-              </CardContent>
-            </Card>
-            <Card className="cursor-pointer hover:border-primary hover:shadow-md transition-all" onClick={() => setPath("manual")}>
-              <CardHeader className="text-center">
-                <div className="mx-auto h-16 w-16 rounded-2xl bg-info/10 flex items-center justify-center mb-2">
-                  <FileText className="h-8 w-8 text-info" />
-                </div>
-                <CardTitle className="text-lg">Manual Registration</CardTitle>
-                <CardDescription>Upload ID documents for manual verification by our team.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2 text-sm text-muted-foreground">
-                  <li className="flex items-center gap-2"><Check className="h-4 w-4 text-info" /> No BankID needed</li>
-                  <li className="flex items-center gap-2"><Check className="h-4 w-4 text-info" /> International ID accepted</li>
-                  <li className="flex items-center gap-2"><Check className="h-4 w-4 text-info" /> 1-2 business day review</li>
-                </ul>
-              </CardContent>
-            </Card>
-          </div>
-          <div className="mt-6 text-center text-sm text-muted-foreground">
-            Already registered? <Link to="/login" className="text-primary font-medium hover:underline">Sign in</Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const [form, setForm] = useState({
+    firstName: "",
+    lastName: "",
+    phone: "",
+    email: "",
+    street: "",
+    apartment: "",
+    city: "",
+    postCode: "",
+    personalNumber: "",
+    transport: "",
+  });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (step < 3) setStep(step + 1);
-    else navigate("/login");
+  const update = (field: string, value: string) => setForm((f) => ({ ...f, [field]: value }));
+
+  const progress = ((step + 1) / STEPS.length) * 100;
+
+  const canProceed = () => {
+    if (step === 0) return form.firstName && form.lastName && form.phone && form.email;
+    if (step === 1) return form.street && form.city && form.postCode;
+    if (step === 2) return form.personalNumber;
+    if (step === 3) return form.transport;
+    return false;
   };
 
-  const steps = ["Personal Info", "Work Details", "Review & Submit"];
+  const goNext = () => {
+    if (step < STEPS.length - 1) {
+      setAnimDir("right");
+      setStep(step + 1);
+    }
+  };
+
+  const goBack = () => {
+    if (step > 0) {
+      setAnimDir("left");
+      setStep(step - 1);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (step < STEPS.length - 1) {
+      goNext();
+      return;
+    }
+    setIsSubmitting(true);
+    // TODO: Submit to Supabase
+    setTimeout(() => {
+      setIsSubmitting(false);
+      toast({
+        title: "Registration submitted!",
+        description: "Check your email for verification. We'll review your application shortly.",
+      });
+      navigate("/login");
+    }, 1500);
+  };
+
+  const StepIcon = STEPS[step].icon;
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-background">
-      <Card className="w-full max-w-lg">
-        <CardHeader>
-          <button onClick={() => { if (step === 1) setPath(null); else setStep(step - 1); }} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-2">
-            <ArrowLeft className="h-4 w-4" /> Back
-          </button>
-          <CardTitle>{path === "bankid" ? "BankID Registration" : "Manual Registration"}</CardTitle>
-          <CardDescription>Step {step} of 3: {steps[step - 1]}</CardDescription>
-          <div className="flex gap-1 mt-3">
-            {steps.map((_, i) => (
-              <div key={i} className={`h-1.5 flex-1 rounded-full ${i < step ? "bg-primary" : "bg-muted"}`} />
-            ))}
+    <div className="min-h-screen flex">
+      {/* Left panel */}
+      <div className="hidden lg:flex lg:w-5/12 bg-sidebar relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-transparent" />
+        <div className="relative z-10 flex flex-col justify-between p-12 text-sidebar-foreground">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="h-10 w-10 rounded-xl bg-primary flex items-center justify-center font-bold text-lg text-primary-foreground">AM</div>
+              <span className="text-2xl font-bold">AM:365</span>
+            </div>
+            <p className="text-sm opacity-70">Workforce Platform</p>
           </div>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {step === 1 && (
-              <>
-                {path === "bankid" && (
-                  <div className="p-4 rounded-lg bg-primary/5 border border-primary/20 text-sm text-center mb-4">
-                    <Fingerprint className="h-8 w-8 text-primary mx-auto mb-2" />
-                    <p className="font-medium">Open your BankID app</p>
-                    <p className="text-muted-foreground">Waiting for verification...</p>
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2"><Label>First Name</Label><Input placeholder="Johan" /></div>
-                  <div className="space-y-2"><Label>Last Name</Label><Input placeholder="Andersson" /></div>
-                </div>
-                <div className="space-y-2"><Label>Personal Number / ID</Label><Input placeholder="YYYYMMDD-XXXX" /></div>
-                <div className="space-y-2"><Label>Email</Label><Input type="email" placeholder="johan@example.com" /></div>
-                <div className="space-y-2"><Label>Phone</Label><Input type="tel" placeholder="+46 70 123 4567" /></div>
-              </>
-            )}
-            {step === 2 && (
-              <>
-                <div className="space-y-2"><Label>Preferred Work City</Label><Input placeholder="Stockholm" /></div>
-                <div className="space-y-2"><Label>Vehicle Type</Label><Input placeholder="Bicycle, Moped, Car..." /></div>
-                <div className="space-y-2"><Label>Availability</Label><Input placeholder="Full-time / Part-time" /></div>
-                {path === "manual" && (
-                  <div className="space-y-2">
-                    <Label>Upload ID Document</Label>
-                    <div className="border-2 border-dashed rounded-lg p-6 text-center text-muted-foreground hover:border-primary transition-colors cursor-pointer">
-                      <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                      <p className="text-sm">Click to upload passport or ID card</p>
-                      <p className="text-xs mt-1">PDF, JPG or PNG up to 10MB</p>
+
+          <div className="space-y-6">
+            <h2 className="text-3xl font-bold leading-tight">Join the AM:365<br />Partner Family</h2>
+            <p className="text-base opacity-70 max-w-sm">Register as a delivery partner and get access to employment benefits, payroll management, and more.</p>
+
+            {/* Step indicators */}
+            <div className="space-y-3 mt-8">
+              {STEPS.map((s, i) => {
+                const Icon = s.icon;
+                const isActive = i === step;
+                const isDone = i < step;
+                return (
+                  <div
+                    key={i}
+                    className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-300 ${
+                      isActive
+                        ? "bg-sidebar-accent text-sidebar-foreground"
+                        : isDone
+                        ? "opacity-70"
+                        : "opacity-40"
+                    }`}
+                  >
+                    <div
+                      className={`h-9 w-9 rounded-lg flex items-center justify-center text-sm font-bold transition-all duration-300 ${
+                        isDone
+                          ? "bg-primary text-primary-foreground"
+                          : isActive
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-sidebar-accent text-sidebar-foreground"
+                      }`}
+                    >
+                      {isDone ? <CheckCircle className="h-5 w-5" /> : <Icon className="h-4 w-4" />}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{s.label}</p>
+                      <p className="text-xs opacity-60">Step {i + 1} of {STEPS.length}</p>
                     </div>
                   </div>
-                )}
-              </>
-            )}
-            {step === 3 && (
-              <div className="space-y-3">
-                <div className="p-4 rounded-lg bg-muted space-y-2 text-sm">
-                  <div className="flex justify-between"><span className="text-muted-foreground">Name</span><span className="font-medium">Johan Andersson</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Email</span><span className="font-medium">johan@example.com</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Verification</span><span className="font-medium capitalize">{path}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">City</span><span className="font-medium">Stockholm</span></div>
+                );
+              })}
+            </div>
+          </div>
+
+          <p className="text-xs opacity-50">© 2024 AM365 Group AB. All rights reserved.</p>
+        </div>
+      </div>
+
+      {/* Right panel */}
+      <div className="flex-1 flex items-center justify-center p-6 bg-background">
+        <div className="w-full max-w-lg">
+          {/* Mobile header */}
+          <div className="lg:hidden flex items-center justify-center gap-2 mb-6">
+            <div className="h-10 w-10 rounded-xl bg-primary flex items-center justify-center text-primary-foreground font-bold">AM</div>
+            <span className="text-2xl font-bold">AM:365</span>
+          </div>
+
+          {/* Progress bar */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-medium text-muted-foreground">Step {step + 1} of {STEPS.length}</p>
+              <p className="text-sm font-medium text-primary">{Math.round(progress)}%</p>
+            </div>
+            <Progress value={progress} className="h-2" />
+          </div>
+
+          <Card className="border shadow-sm">
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="h-11 w-11 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <StepIcon className="h-5 w-5 text-primary" />
                 </div>
-                <div className="flex items-start gap-2 text-sm">
-                  <input type="checkbox" className="mt-1" />
-                  <span className="text-muted-foreground">I agree to the <a href="#" className="text-primary underline">Terms of Service</a> and <a href="#" className="text-primary underline">Privacy Policy</a></span>
+                <div>
+                  <CardTitle className="text-xl">{STEPS[step].label}</CardTitle>
+                  <CardDescription>
+                    {step === 0 && "Tell us your basic details"}
+                    {step === 1 && "Where are you located?"}
+                    {step === 2 && "Your Swedish ID for verification"}
+                    {step === 3 && "How will you deliver?"}
+                  </CardDescription>
                 </div>
               </div>
-            )}
-            <Button type="submit" className="w-full">
-              {step < 3 ? "Continue" : "Submit Registration"} <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+            </CardHeader>
+
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <div
+                  key={step}
+                  className="space-y-4 animate-fade-in"
+                  style={{ animationDuration: "0.3s" }}
+                >
+                  {step === 0 && (
+                    <>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="firstName">First Name *</Label>
+                          <Input id="firstName" placeholder="Johan" value={form.firstName} onChange={(e) => update("firstName", e.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="lastName">Last Name *</Label>
+                          <Input id="lastName" placeholder="Andersson" value={form.lastName} onChange={(e) => update("lastName", e.target.value)} />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="phone">Phone Number *</Label>
+                        <Input id="phone" type="tel" placeholder="+46 70 123 4567" value={form.phone} onChange={(e) => update("phone", e.target.value)} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="email">Email Address *</Label>
+                        <Input id="email" type="email" placeholder="johan@example.com" value={form.email} onChange={(e) => update("email", e.target.value)} />
+                      </div>
+                    </>
+                  )}
+
+                  {step === 1 && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="street">Street Address *</Label>
+                        <Input id="street" placeholder="Sveavägen 42" value={form.street} onChange={(e) => update("street", e.target.value)} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="apartment">Apartment / Suite <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                        <Input id="apartment" placeholder="Lgh 1102" value={form.apartment} onChange={(e) => update("apartment", e.target.value)} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="city">City *</Label>
+                          <Input id="city" placeholder="Stockholm" value={form.city} onChange={(e) => update("city", e.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="postCode">Post Code *</Label>
+                          <Input id="postCode" placeholder="113 50" value={form.postCode} onChange={(e) => update("postCode", e.target.value)} />
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {step === 2 && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="personalNumber">Swedish ID / Coordination Number *</Label>
+                        <Input id="personalNumber" placeholder="YYYYMMDD-XXXX" value={form.personalNumber} onChange={(e) => update("personalNumber", e.target.value)} />
+                        <p className="text-xs text-muted-foreground">Your personnummer or samordningsnummer. This is required for employment registration.</p>
+                      </div>
+                      <div className="p-4 rounded-xl bg-primary/5 border border-primary/20">
+                        <div className="flex items-start gap-3">
+                          <IdCard className="h-5 w-5 text-primary mt-0.5" />
+                          <div>
+                            <p className="text-sm font-medium">Secure Verification</p>
+                            <p className="text-xs text-muted-foreground mt-1">Your personal number is encrypted and only used for employment verification with Skatteverket. We follow GDPR data protection guidelines.</p>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {step === 3 && (
+                    <div className="space-y-3">
+                      {transportOptions.map((opt) => (
+                        <div
+                          key={opt.value}
+                          onClick={() => update("transport", opt.value)}
+                          className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 ${
+                            form.transport === opt.value
+                              ? "border-primary bg-primary/5 shadow-sm"
+                              : "border-border hover:border-primary/30 hover:bg-muted/50"
+                          }`}
+                        >
+                          <span className="text-3xl">{opt.icon}</span>
+                          <div className="flex-1">
+                            <p className="font-semibold">{opt.label}</p>
+                            <p className="text-sm text-muted-foreground">{opt.description}</p>
+                          </div>
+                          {form.transport === opt.value && (
+                            <CheckCircle className="h-5 w-5 text-primary" />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Navigation */}
+                <div className="flex items-center gap-3 pt-2">
+                  {step > 0 && (
+                    <Button type="button" variant="outline" onClick={goBack} className="flex-1">
+                      <ArrowLeft className="mr-2 h-4 w-4" /> Back
+                    </Button>
+                  )}
+                  <Button
+                    type="submit"
+                    className="flex-1"
+                    disabled={!canProceed() || isSubmitting}
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting...
+                      </>
+                    ) : step < STEPS.length - 1 ? (
+                      <>
+                        Continue <ArrowRight className="ml-2 h-4 w-4" />
+                      </>
+                    ) : (
+                      <>
+                        Submit Registration <ArrowRight className="ml-2 h-4 w-4" />
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </form>
+
+              <div className="mt-6 text-center text-sm text-muted-foreground">
+                Already registered?{" "}
+                <Link to="/login" className="text-primary font-medium hover:underline">Sign in</Link>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }
