@@ -352,14 +352,15 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const body = await req.json()
-    console.log('Received body:', body)
+    const rawBody = await req.json()
+    console.log('Received body:', rawBody)
 
-    let to = body.to
-    let template = body.template
-    let data = body.data
+    const body = rawBody?.body ?? rawBody
+    let to = body?.to
+    let template = body?.template
+    let data = body?.data
 
-    if (!template && body.firstName && body.verificationCode && body.applicationId) {
+    if (!template && body?.firstName && body?.verificationCode && body?.applicationId) {
       template = 'registration'
       data = {
         firstName: body.firstName,
