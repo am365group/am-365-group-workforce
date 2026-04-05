@@ -4,7 +4,7 @@ const corsHeaders = {
 }
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
-const FROM_EMAIL = 'AM:365 <info@extra2share.net>'
+const FROM_EMAIL = 'AM:365 <workforce@extra2share.net>'
 
 const templates = {
   registration: (data: { firstName: string; verificationCode: string; applicationId: string }) => ({
