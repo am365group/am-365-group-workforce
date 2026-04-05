@@ -5,8 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { ArrowRight, ArrowLeft, User, MapPin, IdCard, Bike, Car, CheckCircle, Loader2 } from "lucide-react";
+import { ArrowRight, ArrowLeft, User, MapPin, IdCard, Bike, CheckCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 const STEPS = [
   { label: "Basic Information", icon: User },
@@ -24,7 +25,6 @@ const transportOptions = [
 export default function Register() {
   const [step, setStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [animDir, setAnimDir] = useState<"left" | "right">("right");
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -54,17 +54,11 @@ export default function Register() {
   };
 
   const goNext = () => {
-    if (step < STEPS.length - 1) {
-      setAnimDir("right");
-      setStep(step + 1);
-    }
+    if (step < STEPS.length - 1) setStep(step + 1);
   };
 
   const goBack = () => {
-    if (step > 0) {
-      setAnimDir("left");
-      setStep(step - 1);
-    }
+    if (step > 0) setStep(step - 1);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -73,16 +67,65 @@ export default function Register() {
       goNext();
       return;
     }
+
     setIsSubmitting(true);
-    // TODO: Submit to Supabase
-    setTimeout(() => {
-      setIsSubmitting(false);
+    try {
+      // Generate 6-digit verification code
+      const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 min
+
+      // Insert application into database
+      const { data, error } = await supabase
+        .from("partner_applications")
+        .insert({
+          first_name: form.firstName,
+          last_name: form.lastName,
+          email: form.email,
+          phone: form.phone,
+          street_address: form.street,
+          apartment: form.apartment || null,
+          city: form.city,
+          post_code: form.postCode,
+          personal_number: form.personalNumber,
+          transport: form.transport as "bicycle" | "moped" | "car",
+          status: "pending",
+          verification_code: verificationCode,
+          verification_expires_at: expiresAt,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Send verification email
+      try {
+        await supabase.functions.invoke("send-registration-email", {
+          body: {
+            to: form.email,
+            firstName: form.firstName,
+            verificationCode,
+            applicationId: data.id,
+          },
+        });
+      } catch (emailErr) {
+        console.warn("Email sending failed, but registration saved:", emailErr);
+      }
+
       toast({
-        title: "Registration submitted!",
-        description: "Check your email for verification. We'll review your application shortly.",
+        title: "Registration submitted! ✅",
+        description: "Check your email for a verification code. We'll review your application shortly.",
       });
       navigate("/login");
-    }, 1500);
+    } catch (err: any) {
+      console.error("Registration error:", err);
+      toast({
+        title: "Registration failed",
+        description: err.message || "Something went wrong. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const StepIcon = STEPS[step].icon;
@@ -115,20 +158,12 @@ export default function Register() {
                   <div
                     key={i}
                     className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-300 ${
-                      isActive
-                        ? "bg-sidebar-accent text-sidebar-foreground"
-                        : isDone
-                        ? "opacity-70"
-                        : "opacity-40"
+                      isActive ? "bg-sidebar-accent" : isDone ? "opacity-70" : "opacity-40"
                     }`}
                   >
                     <div
                       className={`h-9 w-9 rounded-lg flex items-center justify-center text-sm font-bold transition-all duration-300 ${
-                        isDone
-                          ? "bg-primary text-primary-foreground"
-                          : isActive
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-sidebar-accent text-sidebar-foreground"
+                        isDone || isActive ? "bg-primary text-primary-foreground" : "bg-sidebar-accent text-sidebar-foreground"
                       }`}
                     >
                       {isDone ? <CheckCircle className="h-5 w-5" /> : <Icon className="h-4 w-4" />}
@@ -185,11 +220,7 @@ export default function Register() {
 
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-5">
-                <div
-                  key={step}
-                  className="space-y-4 animate-fade-in"
-                  style={{ animationDuration: "0.3s" }}
-                >
+                <div key={step} className="space-y-4 animate-fade-in" style={{ animationDuration: "0.3s" }}>
                   {step === 0 && (
                     <>
                       <div className="grid grid-cols-2 gap-3">
@@ -272,9 +303,7 @@ export default function Register() {
                             <p className="font-semibold">{opt.label}</p>
                             <p className="text-sm text-muted-foreground">{opt.description}</p>
                           </div>
-                          {form.transport === opt.value && (
-                            <CheckCircle className="h-5 w-5 text-primary" />
-                          )}
+                          {form.transport === opt.value && <CheckCircle className="h-5 w-5 text-primary" />}
                         </div>
                       ))}
                     </div>
@@ -288,23 +317,13 @@ export default function Register() {
                       <ArrowLeft className="mr-2 h-4 w-4" /> Back
                     </Button>
                   )}
-                  <Button
-                    type="submit"
-                    className="flex-1"
-                    disabled={!canProceed() || isSubmitting}
-                  >
+                  <Button type="submit" className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90" disabled={!canProceed() || isSubmitting}>
                     {isSubmitting ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting...
-                      </>
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting...</>
                     ) : step < STEPS.length - 1 ? (
-                      <>
-                        Continue <ArrowRight className="ml-2 h-4 w-4" />
-                      </>
+                      <>Continue <ArrowRight className="ml-2 h-4 w-4" /></>
                     ) : (
-                      <>
-                        Submit Registration <ArrowRight className="ml-2 h-4 w-4" />
-                      </>
+                      <>Submit Registration <ArrowRight className="ml-2 h-4 w-4" /></>
                     )}
                   </Button>
                 </div>
