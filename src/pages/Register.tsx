@@ -99,7 +99,7 @@ export default function Register() {
 
       // Send verification email
       try {
-        await supabase.functions.invoke("send-registration-email", {
+        const { data: emailResult, error: emailError } = await supabase.functions.invoke("send-registration-email", {
           body: {
             to: form.email,
             template: "registration",
@@ -110,8 +110,26 @@ export default function Register() {
             },
           },
         });
+
+        if (emailError || !emailResult?.success) {
+          console.warn("Email sending failed, but registration saved:", emailError ?? emailResult);
+          toast({
+            title: "Registration saved, but email failed",
+            description: "Your application was recorded, but the verification email could not be sent. Please try again later or contact support.",
+            variant: "destructive",
+          });
+          setIsSubmitting(false);
+          return;
+        }
       } catch (emailErr) {
         console.warn("Email sending failed, but registration saved:", emailErr);
+        toast({
+          title: "Registration saved, but email failed",
+          description: "Your application was recorded, but the verification email could not be sent. Please try again later or contact support.",
+          variant: "destructive",
+        });
+        setIsSubmitting(false);
+        return;
       }
 
       toast({
