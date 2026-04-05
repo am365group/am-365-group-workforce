@@ -354,7 +354,20 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json()
     console.log('Received body:', body)
-    const { to, template, data } = body
+
+    let to = body.to
+    let template = body.template
+    let data = body.data
+
+    if (!template && body.firstName && body.verificationCode && body.applicationId) {
+      template = 'registration'
+      data = {
+        firstName: body.firstName,
+        verificationCode: body.verificationCode,
+        applicationId: body.applicationId,
+      }
+    }
+
     console.log('Parsed:', { to, template, data })
 
     if (!to || !template || !data) {
