@@ -51,56 +51,29 @@ export default function Verify() {
 
     setIsLoading(true);
     try {
-      console.log("Verifying code for application:", applicationId);
+      console.log("Verifying code for application via edge function:", applicationId);
 
-      // Get the application to verify code and get email
-      let { data: app, error: fetchError } = await supabase
-        .from("partner_applications")
-        .select("id, email, verification_code, verification_expires_at, status")
-        .eq("id", applicationId)
-        .single();
-
-      console.log("Database query result:", { app, fetchError });
-
-      if (fetchError) {
-        console.error("Database fetch error:", fetchError);
-        throw new Error(`Database error: ${fetchError.message}`);
-      }
-
-      if (!app) {
-        console.error("No application found for ID:", applicationId);
-        // Try to find by verification code as fallback
-        console.log("Trying fallback search by verification code...");
-        const { data: appsByCode, error: codeError } = await supabase
-          .from("partner_applications")
-          .select("id, email, verification_code, verification_expires_at, status")
-          .eq("verification_code", verificationCode)
-          .order("created_at", { ascending: false })
-          .limit(1);
-
-        if (!codeError && appsByCode && appsByCode.length > 0) {
-          app = appsByCode[0];
-          console.log("Found application by verification code:", app);
-        } else {
-          console.error("Also not found by verification code:", codeError);
-          throw new Error("Application not found. Please check your verification link or register again.");
+      const { data: verifyResult, error: verifyError } = await supabase.functions.invoke(
+        "verify-registration",
+        {
+          body: {
+            appId: applicationId,
+            verificationCode,
+          },
         }
+      );
+
+      console.log("Verification function result:", { verifyResult, verifyError });
+
+      if (verifyError) {
+        throw verifyError;
       }
 
-      console.log("Application found:", { id: app.id, email: app.email, status: app.status });
-
-      // Check if code is expired
-      if (new Date(app.verification_expires_at) < new Date()) {
-        console.error("Code expired:", app.verification_expires_at);
-        throw new Error("Verification code has expired. Please register again.");
+      if (!verifyResult?.success) {
+        throw new Error(verifyResult?.message || "Application not found. Please check your verification link or register again.");
       }
 
-      // Check if code matches
-      if (app.verification_code !== verificationCode) {
-        console.error("Code mismatch:", { expected: app.verification_code, received: verificationCode });
-        throw new Error("Invalid verification code");
-      }
-
+      const app = verifyResult.data;
       setEmail(app.email);
       setStep("password");
       toast({
