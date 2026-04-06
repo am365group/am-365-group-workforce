@@ -2,13 +2,9 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-
-const FROM_EMAIL = 'AM:365 <noreply@extra2share.net>'
+const FROM_EMAIL = 'AM:365 <workforce@extra2share.net>'
 
 const templates = {
   registration: (data: { firstName: string; verificationCode: string; applicationId: string }) => ({
@@ -29,19 +25,25 @@ const templates = {
   </td></tr>
   <tr><td style="padding:40px;">
     <h1 style="color:#0f172a;font-size:24px;margin:0 0 8px;">Welcome, ${data.firstName}! 👋</h1>
-    <p style="color:#64748b;font-size:16px;line-height:1.6;margin:0 0 24px;">Thank you for registering as a delivery partner with AM:365. Please verify your email address using the code below:</p>
+    <p style="color:#64748b;font-size:16px;line-height:1.6;margin:0 0 24px;">Thank you for registering as a delivery partner with AM:365. Please verify your email address to continue your application:</p>
+    <table cellpadding="0" cellspacing="0" width="100%"><tr><td align="center" style="margin:0 0 24px;">
+      <a href="https://extra2share.net/verify?code=${data.verificationCode}&appId=${data.applicationId}" style="display:inline-block;background:#22C55E;color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:600;font-size:16px;">Verify Email →</a>
+    </td></tr></table>
+    <p style="color:#64748b;font-size:13px;text-align:center;margin:0 0 24px;">Or enter this code manually:</p>
     <div style="background:#f0fdf4;border:2px solid #22C55E;border-radius:12px;padding:24px;text-align:center;margin:0 0 24px;">
       <p style="color:#64748b;font-size:14px;margin:0 0 8px;">Your verification code</p>
       <p style="color:#22C55E;font-size:36px;font-weight:bold;letter-spacing:8px;margin:0;">${data.verificationCode}</p>
       <p style="color:#94a3b8;font-size:12px;margin:8px 0 0;">This code expires in 30 minutes</p>
     </div>
-    <p style="color:#64748b;font-size:14px;line-height:1.6;margin:0 0 24px;">Once verified, our team will review your application. You'll receive updates at each step of the process.</p>
+    <p style="color:#64748b;font-size:14px;line-height:1.6;margin:0 0 24px;">Once verified, you'll set up your password and access your onboarding dashboard to submit required documents.</p>
     <div style="background:#f8fafc;border-radius:12px;padding:20px;margin:0 0 24px;">
-      <p style="color:#0f172a;font-size:14px;font-weight:600;margin:0 0 12px;">What happens next?</p>
+      <p style="color:#0f172a;font-size:14px;font-weight:600;margin:0 0 12px;">Your next steps:</p>
       <table cellpadding="0" cellspacing="0" width="100%">
-        <tr><td style="padding:6px 0;color:#64748b;font-size:13px;">✅ Email verification</td></tr>
-        <tr><td style="padding:6px 0;color:#64748b;font-size:13px;">📋 Application review by our team</td></tr>
-        <tr><td style="padding:6px 0;color:#64748b;font-size:13px;">📝 Contract & sign-off</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b;font-size:13px;">✅ Verify your email (you are here)</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b;font-size:13px;">🔐 Set up your password</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b;font-size:13px;">📋 Upload ID & documents</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b;font-size:13px;">👀 Our team reviews your application</td></tr>
+        <tr><td style="padding:6px 0;color:#64748b;font-size:13px;">📝 Sign employment contract</td></tr>
         <tr><td style="padding:6px 0;color:#64748b;font-size:13px;">🎉 Welcome to the AM:365 family!</td></tr>
       </table>
     </div>
@@ -356,11 +358,28 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { to, template, data } = await req.json()
+    const rawBody = await req.json()
+    console.log('Received body:', rawBody)
 
-    if (!to || !template) {
+    const body = rawBody?.body ?? rawBody
+    let to = body?.to
+    let template = body?.template
+    let data = body?.data
+
+    if (!template && body?.firstName && body?.verificationCode && body?.applicationId) {
+      template = 'registration'
+      data = {
+        firstName: body.firstName,
+        verificationCode: body.verificationCode,
+        applicationId: body.applicationId,
+      }
+    }
+
+    console.log('Parsed:', { to, template, data })
+
+    if (!to || !template || !data) {
       return new Response(
-        JSON.stringify({ error: 'Missing required fields: to, template' }),
+        JSON.stringify({ error: 'Missing required fields: to, template, data' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }

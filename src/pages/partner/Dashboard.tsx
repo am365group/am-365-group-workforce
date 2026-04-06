@@ -2,7 +2,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { DollarSign, Clock, Calendar, TrendingUp, ArrowUpRight, FileText, Truck, MapPin, Star, ChevronRight } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { DollarSign, Clock, Calendar, TrendingUp, ArrowUpRight, FileText, Truck, MapPin, Star, ChevronRight, AlertCircle } from "lucide-react";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { Link } from "react-router-dom";
 
 const stats = [
   { label: "Current Balance", value: "12,450 SEK", icon: DollarSign, change: "+8.2%", color: "text-primary", bg: "bg-primary/10" },
@@ -26,12 +30,65 @@ const upcomingShifts = [
 ];
 
 export default function PartnerDashboard() {
+  const [appStatus, setAppStatus] = useState<string | null>(null);
+  const [userName, setUserName] = useState("Partner");
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        const { data: userData, error: userError } = await supabase.auth.getUser();
+        if (userError || !userData.user) {
+          setIsLoading(false);
+          return;
+        }
+
+        const { data: app, error: appError } = await supabase
+          .from("partner_applications")
+          .select("status, first_name")
+          .eq("email", userData.user.email)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+
+        if (!appError && app) {
+          setAppStatus(app.status);
+          setUserName(app.first_name || "Partner");
+        }
+      } catch (e) {
+        console.error("Error fetching user data:", e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchUserData();
+  }, []);
+
+  const isIncomplete = appStatus === "pending" || appStatus === "email_verified";
+
   return (
     <div className="space-y-8 animate-fade-in">
       <div>
-        <h1 className="text-3xl font-bold">Welcome back, Johan 👋</h1>
+        <h1 className="text-3xl font-bold">Welcome back, {userName} 👋</h1>
         <p className="text-base text-muted-foreground mt-1">Here's your overview for April 2024</p>
       </div>
+
+      {isIncomplete && (
+        <Alert className="bg-amber-50 border-amber-200">
+          <AlertCircle className="h-4 w-4 text-amber-600" />
+          <AlertDescription className="text-amber-800">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <strong>Complete your profile:</strong> Upload your ID and required documents to activate your account and access all features.
+              </div>
+              <Link to="/partner/documents">
+                <Button variant="default" size="sm">Upload Documents</Button>
+              </Link>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Stats Grid */}
       <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
