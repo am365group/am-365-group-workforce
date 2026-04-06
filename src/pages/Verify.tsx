@@ -54,7 +54,7 @@ export default function Verify() {
       console.log("Verifying code for application:", applicationId);
 
       // Get the application to verify code and get email
-      const { data: app, error: fetchError } = await supabase
+      let { data: app, error: fetchError } = await supabase
         .from("partner_applications")
         .select("id, email, verification_code, verification_expires_at, status")
         .eq("id", applicationId)
@@ -69,7 +69,22 @@ export default function Verify() {
 
       if (!app) {
         console.error("No application found for ID:", applicationId);
-        throw new Error("Application not found. Please check your verification link or register again.");
+        // Try to find by verification code as fallback
+        console.log("Trying fallback search by verification code...");
+        const { data: appsByCode, error: codeError } = await supabase
+          .from("partner_applications")
+          .select("id, email, verification_code, verification_expires_at, status")
+          .eq("verification_code", verificationCode)
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        if (!codeError && appsByCode && appsByCode.length > 0) {
+          app = appsByCode[0];
+          console.log("Found application by verification code:", app);
+        } else {
+          console.error("Also not found by verification code:", codeError);
+          throw new Error("Application not found. Please check your verification link or register again.");
+        }
       }
 
       console.log("Application found:", { id: app.id, email: app.email, status: app.status });

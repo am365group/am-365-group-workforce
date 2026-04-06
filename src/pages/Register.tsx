@@ -75,6 +75,12 @@ export default function Register() {
       const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
       const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 min
 
+      console.log("Generated application data:", {
+        applicationId,
+        verificationCode,
+        expiresAt
+      });
+
       // Insert application into database
       const { error } = await supabase
         .from("partner_applications")
@@ -95,10 +101,21 @@ export default function Register() {
           verification_expires_at: expiresAt,
         });
 
-      if (error) throw error;
+      console.log("Database insert result:", { error });
+
+      if (error) {
+        console.error("Database insert error:", error);
+        throw error;
+      }
 
       // Send verification email
       try {
+        console.log("Sending email with data:", {
+          to: form.email,
+          applicationId,
+          verificationCode
+        });
+
         const { data: emailResult, error: emailError } = await supabase.functions.invoke("send-registration-email", {
           body: {
             to: form.email,
@@ -110,6 +127,8 @@ export default function Register() {
             },
           },
         });
+
+        console.log("Email send result:", { emailResult, emailError });
 
         if (emailError || !emailResult?.success) {
           console.warn("Email sending failed, but registration saved:", emailError ?? emailResult);
