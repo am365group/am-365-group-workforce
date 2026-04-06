@@ -1,116 +1,591 @@
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ShieldCheck, CheckCircle, XCircle, Eye, Clock, AlertTriangle, FileText, User, Camera } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Label } from "@/components/ui/label";
+import {
+  ShieldCheck, CheckCircle, XCircle, Eye, Clock, FileText, User, Camera,
+  Send, Edit, AlertTriangle, Loader2, Search, Filter, MoreHorizontal,
+  Mail, MapPin, Phone, IdCard, Bike, Car
+} from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
-const queue = [
-  { name: "Anna Lindström", type: "Passport (Swedish)", submitted: "Mar 30, 2024", priority: "High", idNumber: "SE-****-4521", city: "Gothenburg", age: "28", selfie: true, docFront: true, docBack: true },
-  { name: "Sofia Bergqvist", type: "National ID Card", submitted: "Apr 1, 2024", priority: "Medium", idNumber: "SE-****-7893", city: "Stockholm", age: "32", selfie: true, docFront: true, docBack: false },
-  { name: "Carlos Garcia", type: "Residence Permit (UT-kort)", submitted: "Apr 2, 2024", priority: "High", idNumber: "RP-****-1245", city: "Uppsala", age: "26", selfie: true, docFront: true, docBack: true },
-  { name: "Fatima Noor", type: "Passport (Somali)", submitted: "Apr 2, 2024", priority: "Low", idNumber: "SO-****-8834", city: "Stockholm", age: "24", selfie: false, docFront: true, docBack: false },
-  { name: "Ahmed Hassan", type: "Passport (Iraqi)", submitted: "Apr 3, 2024", priority: "Medium", idNumber: "IQ-****-2291", city: "Malmö", age: "30", selfie: true, docFront: true, docBack: true },
-];
+type Application = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+  city: string;
+  street_address: string;
+  apartment: string | null;
+  post_code: string;
+  personal_number: string;
+  transport: string;
+  status: string;
+  created_at: string;
+  id_verified: boolean | null;
+  documents_verified: boolean | null;
+  address_verified: boolean | null;
+  bank_details_verified: boolean | null;
+  review_notes: string | null;
+  user_id: string | null;
+};
 
-const recentDecisions = [
-  { name: "Erik Johansson", decision: "Approved", date: "Mar 28, 2024", reviewer: "Verifier — Peter N." },
-  { name: "Klara Nilsson", decision: "Approved", date: "Mar 27, 2024", reviewer: "Verifier — Peter N." },
-  { name: "James Smith", decision: "Rejected", date: "Mar 26, 2024", reviewer: "Verifier — Peter N.", reason: "Document expired" },
-  { name: "Maria Santos", decision: "Approved", date: "Mar 25, 2024", reviewer: "Admin" },
-];
+type Contract = {
+  id: string;
+  application_id: string;
+  contract_content: string | null;
+  status: string;
+  sent_at: string | null;
+  signed_at: string | null;
+  signing_link: string | null;
+};
+
+const defaultContractTemplate = (app: Application) => `
+EMPLOYMENT CONTRACT — AM:365 GROUP AB
+
+EMPLOYER: AM365 Group AB, Stockholm, Sweden (Org. Nr: 559XXX-XXXX)
+EMPLOYEE: ${app.first_name} ${app.last_name}
+PERSONAL NUMBER: ${app.personal_number}
+ADDRESS: ${app.street_address}${app.apartment ? `, ${app.apartment}` : ""}, ${app.post_code} ${app.city}
+
+1. POSITION
+The Employee is engaged as a Delivery Partner under the Employer of Record (EoR) arrangement with AM:365 Group AB.
+
+2. EMPLOYMENT TYPE
+Employment Type: Variable hours (anställning med varierande arbetstid)
+Start Date: [To be determined upon signing]
+Transport Mode: ${app.transport.charAt(0).toUpperCase() + app.transport.slice(1)}
+
+3. COMPENSATION
+- Hourly rate as per collective agreement and platform rate
+- Overtime compensation per Swedish labor law
+- Holiday pay (semesterlön) at 12% of gross salary
+
+4. BENEFITS
+- Occupational pension (tjänstepension) from day one
+- Accident insurance (TFA)
+- Health insurance
+- Sick pay (sjuklön) as per Swedish law
+
+5. WORKING CONDITIONS
+- The Employee will perform delivery services through platform partners (Wolt, Foodora, etc.)
+- Scheduling will be coordinated through the AM:365 workforce platform
+- The Employee must maintain valid identification and work permits
+
+6. TERMINATION
+- Notice period: 1 month for both parties
+- Immediate termination for gross misconduct
+
+7. GDPR & DATA PROTECTION
+Personal data is processed in accordance with GDPR. See our privacy policy at am365group.se/privacy.
+
+8. GOVERNING LAW
+This contract is governed by Swedish law.
+
+SIGNATURES
+
+Employer: AM365 Group AB
+By: _________________________ Date: _________
+
+Employee: ${app.first_name} ${app.last_name}
+Signature: _________________________ Date: _________
+`;
 
 export default function AdminVerification() {
+  const [applications, setApplications] = useState<Application[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedApp, setSelectedApp] = useState<Application | null>(null);
+  const [showReviewDialog, setShowReviewDialog] = useState(false);
+  const [showContractDialog, setShowContractDialog] = useState(false);
+  const [reviewNotes, setReviewNotes] = useState("");
+  const [contractContent, setContractContent] = useState("");
+  const [actionLoading, setActionLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [activeTab, setActiveTab] = useState("pending");
+  const { toast } = useToast();
+
+  useEffect(() => {
+    loadApplications();
+  }, []);
+
+  const loadApplications = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("partner_applications")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setApplications((data as Application[]) || []);
+    } catch (err) {
+      console.error("Error loading applications:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredApps = applications.filter((app) => {
+    const matchesSearch = !searchTerm || 
+      `${app.first_name} ${app.last_name} ${app.email}`.toLowerCase().includes(searchTerm.toLowerCase());
+    if (activeTab === "pending") return matchesSearch && ["pending", "email_verified", "under_review"].includes(app.status);
+    if (activeTab === "verified") return matchesSearch && ["verified", "contract_sent", "contract_signed"].includes(app.status);
+    if (activeTab === "active") return matchesSearch && app.status === "active";
+    if (activeTab === "rejected") return matchesSearch && app.status === "rejected";
+    return matchesSearch;
+  });
+
+  const handleReview = (app: Application) => {
+    setSelectedApp(app);
+    setReviewNotes(app.review_notes || "");
+    setShowReviewDialog(true);
+  };
+
+  const handleApprove = async () => {
+    if (!selectedApp) return;
+    setActionLoading(true);
+    try {
+      await supabase
+        .from("partner_applications")
+        .update({ status: "verified", id_verified: true, documents_verified: true, address_verified: true, review_notes: reviewNotes })
+        .eq("id", selectedApp.id);
+
+      // Send verification done email
+      await supabase.functions.invoke("send-registration-email", {
+        body: { to: selectedApp.email, template: "verificationDone", data: { firstName: selectedApp.first_name } },
+      });
+
+      // Log onboarding event
+      await supabase.from("onboarding_events").insert({
+        application_id: selectedApp.id,
+        event_type: "verified",
+        notes: reviewNotes || "Application approved by verifier",
+      });
+
+      toast({ title: "Application approved ✅", description: `${selectedApp.first_name} ${selectedApp.last_name} has been verified.` });
+      setShowReviewDialog(false);
+      loadApplications();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!selectedApp || !reviewNotes) {
+      toast({ title: "Notes required", description: "Please add rejection reason.", variant: "destructive" });
+      return;
+    }
+    setActionLoading(true);
+    try {
+      await supabase
+        .from("partner_applications")
+        .update({ status: "rejected", review_notes: reviewNotes })
+        .eq("id", selectedApp.id);
+
+      await supabase.functions.invoke("send-registration-email", {
+        body: {
+          to: selectedApp.email,
+          template: "notification",
+          data: { firstName: selectedApp.first_name, title: "Application Update", message: `Your application requires attention: ${reviewNotes}` },
+        },
+      });
+
+      await supabase.from("onboarding_events").insert({
+        application_id: selectedApp.id,
+        event_type: "rejected",
+        notes: reviewNotes,
+      });
+
+      toast({ title: "Application rejected", description: "Partner has been notified." });
+      setShowReviewDialog(false);
+      loadApplications();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRequestInfo = async () => {
+    if (!selectedApp || !reviewNotes) {
+      toast({ title: "Notes required", description: "Please specify what information is needed.", variant: "destructive" });
+      return;
+    }
+    setActionLoading(true);
+    try {
+      await supabase
+        .from("partner_applications")
+        .update({ status: "under_review", review_notes: reviewNotes })
+        .eq("id", selectedApp.id);
+
+      await supabase.functions.invoke("send-registration-email", {
+        body: {
+          to: selectedApp.email,
+          template: "documentReminder",
+          data: { firstName: selectedApp.first_name, documentType: reviewNotes },
+        },
+      });
+
+      toast({ title: "Info requested", description: "Partner has been notified to provide additional information." });
+      setShowReviewDialog(false);
+      loadApplications();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleOpenContract = (app: Application) => {
+    setSelectedApp(app);
+    setContractContent(defaultContractTemplate(app));
+    setShowContractDialog(true);
+  };
+
+  const handleSendContract = async () => {
+    if (!selectedApp) return;
+    setActionLoading(true);
+    try {
+      const signingLink = `${window.location.origin}/partner/contract?sign=${selectedApp.id}`;
+
+      // Create or update contract
+      const { data: existing } = await supabase
+        .from("partner_contracts")
+        .select("id")
+        .eq("application_id", selectedApp.id)
+        .maybeSingle();
+
+      if (existing) {
+        await supabase.from("partner_contracts")
+          .update({ contract_content: contractContent, status: "sent", sent_at: new Date().toISOString(), signing_link: signingLink, partner_user_id: selectedApp.user_id })
+          .eq("id", existing.id);
+      } else {
+        await supabase.from("partner_contracts").insert({
+          application_id: selectedApp.id,
+          contract_content: contractContent,
+          status: "sent",
+          sent_at: new Date().toISOString(),
+          signing_link: signingLink,
+          partner_user_id: selectedApp.user_id,
+        });
+      }
+
+      // Update application status
+      await supabase.from("partner_applications")
+        .update({ status: "contract_sent" })
+        .eq("id", selectedApp.id);
+
+      // Send contract email
+      await supabase.functions.invoke("send-registration-email", {
+        body: {
+          to: selectedApp.email,
+          template: "contractSigning",
+          data: { firstName: selectedApp.first_name, signingLink },
+        },
+      });
+
+      await supabase.from("onboarding_events").insert({
+        application_id: selectedApp.id,
+        event_type: "contract_sent",
+        notes: "Contract sent for signing",
+      });
+
+      toast({ title: "Contract sent! 📝", description: `Contract sent to ${selectedApp.first_name} ${selectedApp.last_name}` });
+      setShowContractDialog(false);
+      loadApplications();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handlePublishPartner = async (app: Application) => {
+    setActionLoading(true);
+    try {
+      await supabase.from("partner_applications")
+        .update({ status: "active" })
+        .eq("id", app.id);
+
+      // Send welcome email
+      await supabase.functions.invoke("send-registration-email", {
+        body: { to: app.email, template: "welcome", data: { firstName: app.first_name } },
+      });
+
+      await supabase.from("onboarding_events").insert({
+        application_id: app.id,
+        event_type: "activated",
+        notes: "Partner published to resource pool",
+      });
+
+      toast({ title: "Partner activated! 🎉", description: `${app.first_name} ${app.last_name} is now active.` });
+      loadApplications();
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const statusCounts = {
+    pending: applications.filter((a) => ["pending", "email_verified", "under_review"].includes(a.status)).length,
+    verified: applications.filter((a) => ["verified", "contract_sent", "contract_signed"].includes(a.status)).length,
+    active: applications.filter((a) => a.status === "active").length,
+    rejected: applications.filter((a) => a.status === "rejected").length,
+  };
+
+  const getStatusBadge = (status: string) => {
+    const map: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
+      pending: { variant: "outline", label: "Pending" },
+      email_verified: { variant: "secondary", label: "Email Verified" },
+      under_review: { variant: "secondary", label: "Under Review" },
+      verified: { variant: "default", label: "Verified" },
+      contract_sent: { variant: "secondary", label: "Contract Sent" },
+      contract_signed: { variant: "default", label: "Contract Signed" },
+      active: { variant: "default", label: "Active" },
+      rejected: { variant: "destructive", label: "Rejected" },
+    };
+    const cfg = map[status] || { variant: "outline" as const, label: status };
+    return <Badge variant={cfg.variant}>{cfg.label}</Badge>;
+  };
+
+  const getTransportIcon = (transport: string) => {
+    if (transport === "bicycle") return "🚲";
+    if (transport === "moped") return "🛵";
+    if (transport === "car") return "🚗";
+    return "🚗";
+  };
+
   return (
     <div className="space-y-8 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">ID Verification</h1>
-          <p className="text-base text-muted-foreground mt-1">Review and verify partner identity documents for compliance</p>
+          <h1 className="text-3xl font-bold">Partner Verification & Onboarding</h1>
+          <p className="text-base text-muted-foreground mt-1">Review applications, verify documents, manage contracts</p>
         </div>
-        <Badge variant="secondary" className="text-sm px-4 py-1.5">{queue.length} pending review</Badge>
       </div>
 
       {/* Stats */}
       <div className="grid gap-5 md:grid-cols-4">
-        <Card><CardContent className="p-5 text-center"><p className="text-3xl font-bold text-primary">142</p><p className="text-sm text-muted-foreground mt-1">Verified Partners</p></CardContent></Card>
-        <Card><CardContent className="p-5 text-center"><p className="text-3xl font-bold text-warning">5</p><p className="text-sm text-muted-foreground mt-1">Pending Review</p></CardContent></Card>
-        <Card><CardContent className="p-5 text-center"><p className="text-3xl font-bold text-destructive">3</p><p className="text-sm text-muted-foreground mt-1">Rejected (MTD)</p></CardContent></Card>
-        <Card><CardContent className="p-5 text-center"><p className="text-3xl font-bold text-info">4.2h</p><p className="text-sm text-muted-foreground mt-1">Avg Review Time</p></CardContent></Card>
+        <Card><CardContent className="p-5 text-center"><p className="text-3xl font-bold text-amber-500">{statusCounts.pending}</p><p className="text-sm text-muted-foreground mt-1">Pending Review</p></CardContent></Card>
+        <Card><CardContent className="p-5 text-center"><p className="text-3xl font-bold text-primary">{statusCounts.verified}</p><p className="text-sm text-muted-foreground mt-1">Verified / Contract</p></CardContent></Card>
+        <Card><CardContent className="p-5 text-center"><p className="text-3xl font-bold text-primary">{statusCounts.active}</p><p className="text-sm text-muted-foreground mt-1">Active Partners</p></CardContent></Card>
+        <Card><CardContent className="p-5 text-center"><p className="text-3xl font-bold text-destructive">{statusCounts.rejected}</p><p className="text-sm text-muted-foreground mt-1">Rejected</p></CardContent></Card>
       </div>
 
-      {/* Verification Queue */}
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold">Verification Queue</h2>
-        {queue.map((item, i) => (
-          <Card key={i} className="hover:shadow-md transition-shadow">
-            <CardContent className="p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex items-start gap-5">
-                  <div className="h-14 w-14 rounded-xl bg-primary/10 flex items-center justify-center">
-                    <ShieldCheck className="h-7 w-7 text-primary" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-3 mb-1">
-                      <p className="text-lg font-semibold">{item.name}</p>
-                      <Badge variant={item.priority === "High" ? "destructive" : item.priority === "Medium" ? "default" : "secondary"}>
-                        {item.priority} Priority
-                      </Badge>
-                    </div>
-                    <p className="text-muted-foreground">{item.type} · {item.idNumber}</p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {item.city} · Age: {item.age} · Submitted {item.submitted}
-                    </p>
-                    <div className="flex items-center gap-4 mt-3">
-                      <span className="text-xs flex items-center gap-1">
-                        <Camera className={`h-3.5 w-3.5 ${item.selfie ? "text-primary" : "text-destructive"}`} />
-                        Selfie {item.selfie ? "✓" : "✗"}
-                      </span>
-                      <span className="text-xs flex items-center gap-1">
-                        <FileText className={`h-3.5 w-3.5 ${item.docFront ? "text-primary" : "text-destructive"}`} />
-                        Doc Front {item.docFront ? "✓" : "✗"}
-                      </span>
-                      <span className="text-xs flex items-center gap-1">
-                        <FileText className={`h-3.5 w-3.5 ${item.docBack ? "text-primary" : "text-destructive"}`} />
-                        Doc Back {item.docBack ? "✓" : "—"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm"><Eye className="mr-1.5 h-3.5 w-3.5" /> Review</Button>
-                  <Button size="sm" className="bg-primary"><CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Approve</Button>
-                  <Button variant="destructive" size="sm"><XCircle className="mr-1.5 h-3.5 w-3.5" /> Reject</Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+      {/* Search */}
+      <div className="flex gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+          <Input placeholder="Search by name or email..." className="pl-9 h-11" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+        </div>
       </div>
 
-      {/* Recent Decisions */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-xl">Recent Decisions</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {recentDecisions.map((d, i) => (
-              <div key={i} className="flex items-center justify-between p-4 rounded-xl border">
-                <div className="flex items-center gap-4">
-                  <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${d.decision === "Approved" ? "bg-primary/10" : "bg-destructive/10"}`}>
-                    {d.decision === "Approved" ? <CheckCircle className="h-5 w-5 text-primary" /> : <XCircle className="h-5 w-5 text-destructive" />}
-                  </div>
-                  <div>
-                    <p className="font-medium">{d.name}</p>
-                    <p className="text-sm text-muted-foreground">{d.reviewer} · {d.date}</p>
-                    {d.reason && <p className="text-xs text-destructive mt-0.5">Reason: {d.reason}</p>}
-                  </div>
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid grid-cols-4 w-full max-w-lg">
+          <TabsTrigger value="pending">Pending ({statusCounts.pending})</TabsTrigger>
+          <TabsTrigger value="verified">Verified ({statusCounts.verified})</TabsTrigger>
+          <TabsTrigger value="active">Active ({statusCounts.active})</TabsTrigger>
+          <TabsTrigger value="rejected">Rejected ({statusCounts.rejected})</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value={activeTab} className="mt-6">
+          {loading ? (
+            <div className="flex items-center justify-center h-32">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : filteredApps.length === 0 ? (
+            <Card><CardContent className="p-12 text-center text-muted-foreground">No applications found in this category.</CardContent></Card>
+          ) : (
+            <div className="space-y-4">
+              {filteredApps.map((app) => (
+                <Card key={app.id} className="hover:shadow-md transition-shadow">
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start gap-5">
+                        <div className="h-14 w-14 rounded-xl bg-primary/10 flex items-center justify-center">
+                          <User className="h-7 w-7 text-primary" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-3 mb-1">
+                            <p className="text-lg font-semibold">{app.first_name} {app.last_name}</p>
+                            {getStatusBadge(app.status)}
+                          </div>
+                          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                            <span className="flex items-center gap-1"><Mail className="h-3.5 w-3.5" /> {app.email}</span>
+                            <span className="flex items-center gap-1"><Phone className="h-3.5 w-3.5" /> {app.phone}</span>
+                          </div>
+                          <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
+                            <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {app.city}</span>
+                            <span>{getTransportIcon(app.transport)} {app.transport}</span>
+                            <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> {new Date(app.created_at).toLocaleDateString()}</span>
+                          </div>
+                          {app.review_notes && (
+                            <p className="text-sm text-amber-600 mt-2 flex items-start gap-1">
+                              <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" /> {app.review_notes}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {["pending", "email_verified", "under_review"].includes(app.status) && (
+                          <>
+                            <Button variant="outline" size="sm" onClick={() => handleReview(app)}>
+                              <Eye className="mr-1.5 h-3.5 w-3.5" /> Review
+                            </Button>
+                          </>
+                        )}
+                        {app.status === "verified" && (
+                          <Button size="sm" onClick={() => handleOpenContract(app)}>
+                            <FileText className="mr-1.5 h-3.5 w-3.5" /> Send Contract
+                          </Button>
+                        )}
+                        {app.status === "contract_signed" && (
+                          <Button size="sm" className="bg-primary" onClick={() => handlePublishPartner(app)}>
+                            <CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Publish to Pool
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      {/* Review Dialog */}
+      <Dialog open={showReviewDialog} onOpenChange={setShowReviewDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Review Application</DialogTitle>
+            <DialogDescription>
+              {selectedApp && `${selectedApp.first_name} ${selectedApp.last_name} — ${selectedApp.email}`}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedApp && (
+            <div className="space-y-5">
+              {/* Application Details */}
+              <div className="grid grid-cols-2 gap-4 p-4 rounded-xl bg-muted/50 border">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Full Name</p>
+                  <p className="font-medium">{selectedApp.first_name} {selectedApp.last_name}</p>
                 </div>
-                <Badge variant={d.decision === "Approved" ? "default" : "destructive"}>{d.decision}</Badge>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Personal Number</p>
+                  <p className="font-medium font-mono">{selectedApp.personal_number}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Email</p>
+                  <p className="font-medium">{selectedApp.email}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Phone</p>
+                  <p className="font-medium">{selectedApp.phone}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Address</p>
+                  <p className="font-medium">{selectedApp.street_address}{selectedApp.apartment ? `, ${selectedApp.apartment}` : ""}</p>
+                  <p className="text-sm text-muted-foreground">{selectedApp.post_code} {selectedApp.city}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Transport</p>
+                  <p className="font-medium">{getTransportIcon(selectedApp.transport)} {selectedApp.transport}</p>
+                </div>
               </div>
-            ))}
+
+              {/* Verification Checklist */}
+              <div className="space-y-2">
+                <p className="font-semibold">Verification Checklist</p>
+                <div className="space-y-1.5">
+                  {[
+                    { label: "ID Document Verified", checked: selectedApp.id_verified },
+                    { label: "Address Verified", checked: selectedApp.address_verified },
+                    { label: "Bank Details Verified", checked: selectedApp.bank_details_verified },
+                    { label: "Documents Verified", checked: selectedApp.documents_verified },
+                  ].map((item, i) => (
+                    <div key={i} className="flex items-center gap-2 text-sm">
+                      <CheckCircle className={`h-4 w-4 ${item.checked ? "text-primary" : "text-muted-foreground/30"}`} />
+                      <span className={item.checked ? "" : "text-muted-foreground"}>{item.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Review Notes */}
+              <div className="space-y-2">
+                <Label>Review Notes / Rejection Reason</Label>
+                <Textarea
+                  value={reviewNotes}
+                  onChange={(e) => setReviewNotes(e.target.value)}
+                  placeholder="Add notes about this application..."
+                  rows={3}
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="flex gap-2">
+            <Button variant="outline" onClick={handleRequestInfo} disabled={actionLoading}>
+              <Mail className="mr-1.5 h-3.5 w-3.5" /> Request Info
+            </Button>
+            <Button variant="destructive" onClick={handleReject} disabled={actionLoading}>
+              <XCircle className="mr-1.5 h-3.5 w-3.5" /> Reject
+            </Button>
+            <Button onClick={handleApprove} disabled={actionLoading} className="bg-primary text-primary-foreground">
+              {actionLoading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <CheckCircle className="mr-1.5 h-3.5 w-3.5" />}
+              Approve & Verify
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Contract Dialog */}
+      <Dialog open={showContractDialog} onOpenChange={setShowContractDialog}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl flex items-center gap-2">
+              <FileText className="h-5 w-5 text-primary" />
+              Edit & Send Contract
+            </DialogTitle>
+            <DialogDescription>
+              {selectedApp && `Contract for ${selectedApp.first_name} ${selectedApp.last_name}`}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border">
+              <span className="text-sm text-muted-foreground">Auto-generated from application data. Edit as needed before sending.</span>
+              <Badge variant="outline">Draft</Badge>
+            </div>
+            <Textarea
+              value={contractContent}
+              onChange={(e) => setContractContent(e.target.value)}
+              className="min-h-[400px] font-mono text-sm leading-relaxed"
+            />
           </div>
-        </CardContent>
-      </Card>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowContractDialog(false)}>Cancel</Button>
+            <Button onClick={handleSendContract} disabled={actionLoading} className="bg-primary text-primary-foreground">
+              {actionLoading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Send className="mr-1.5 h-3.5 w-3.5" />}
+              Send Contract for Signing
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

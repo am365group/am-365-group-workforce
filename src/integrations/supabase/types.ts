@@ -51,12 +51,17 @@ export type Database = {
       }
       partner_applications: {
         Row: {
+          address_verified: boolean | null
           apartment: string | null
+          bank_details_verified: boolean | null
           city: string
           created_at: string
+          documents_verified: boolean | null
+          documents_verified_at: string | null
           email: string
           first_name: string
           id: string
+          id_verified: boolean | null
           last_name: string
           personal_number: string
           phone: string
@@ -73,12 +78,17 @@ export type Database = {
           verified_at: string | null
         }
         Insert: {
+          address_verified?: boolean | null
           apartment?: string | null
+          bank_details_verified?: boolean | null
           city: string
           created_at?: string
+          documents_verified?: boolean | null
+          documents_verified_at?: string | null
           email: string
           first_name: string
           id?: string
+          id_verified?: boolean | null
           last_name: string
           personal_number: string
           phone: string
@@ -95,12 +105,17 @@ export type Database = {
           verified_at?: string | null
         }
         Update: {
+          address_verified?: boolean | null
           apartment?: string | null
+          bank_details_verified?: boolean | null
           city?: string
           created_at?: string
+          documents_verified?: boolean | null
+          documents_verified_at?: string | null
           email?: string
           first_name?: string
           id?: string
+          id_verified?: boolean | null
           last_name?: string
           personal_number?: string
           phone?: string
@@ -161,6 +176,56 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "partner_contracts_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: false
+            referencedRelation: "partner_applications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      partner_documents: {
+        Row: {
+          application_id: string
+          created_at: string | null
+          document_type: string
+          file_url: string
+          id: string
+          rejection_reason: string | null
+          status: string | null
+          updated_at: string | null
+          uploaded_at: string | null
+          verified_at: string | null
+          verified_by: string | null
+        }
+        Insert: {
+          application_id: string
+          created_at?: string | null
+          document_type: string
+          file_url: string
+          id?: string
+          rejection_reason?: string | null
+          status?: string | null
+          updated_at?: string | null
+          uploaded_at?: string | null
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Update: {
+          application_id?: string
+          created_at?: string | null
+          document_type?: string
+          file_url?: string
+          id?: string
+          rejection_reason?: string | null
+          status?: string | null
+          updated_at?: string | null
+          uploaded_at?: string | null
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partner_documents_application_id_fkey"
             columns: ["application_id"]
             isOneToOne: false
             referencedRelation: "partner_applications"
@@ -230,6 +295,16 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      verify_partner_application: {
+        Args: { app_id: string; code: string }
+        Returns: {
+          email: string
+          id: string
+          status: Database["public"]["Enums"]["application_status"]
+          verification_code: string
+          verification_expires_at: string
+        }[]
       }
     }
     Enums: {

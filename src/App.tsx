@@ -7,6 +7,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import VerifyEmail from "./pages/VerifyEmail";
+import SetPassword from "./pages/SetPassword";
 import PortalLogin from "./pages/PortalLogin";
 import NotFound from "./pages/NotFound";
 
@@ -50,6 +52,8 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/set-password" element={<SetPassword />} />
           <Route path="/portal/login" element={<PortalLogin />} />
 
           <Route path="/partner" element={<PartnerLayout />}>

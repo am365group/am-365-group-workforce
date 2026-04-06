@@ -11,7 +11,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const FROM_EMAIL = 'AM:365 <noreply@extra2share.net>'
 
 const templates = {
-  registration: (data: { firstName: string; verificationCode: string; applicationId: string }) => ({
+  registration: (data: { firstName: string; verificationCode: string; applicationId: string; verifyUrl?: string }) => ({
     subject: 'Verify your AM:365 registration',
     html: `<!DOCTYPE html>
 <html>
@@ -33,8 +33,11 @@ const templates = {
     <div style="background:#f0fdf4;border:2px solid #22C55E;border-radius:12px;padding:24px;text-align:center;margin:0 0 24px;">
       <p style="color:#64748b;font-size:14px;margin:0 0 8px;">Your verification code</p>
       <p style="color:#22C55E;font-size:36px;font-weight:bold;letter-spacing:8px;margin:0;">${data.verificationCode}</p>
-      <p style="color:#94a3b8;font-size:12px;margin:8px 0 0;">This code expires in 30 minutes</p>
+     <p style="color:#64748b;font-size:12px;margin:8px 0 0;">This code expires in 30 minutes</p>
     </div>
+    ${data.verifyUrl ? `<table cellpadding="0" cellspacing="0" width="100%"><tr><td align="center" style="padding:0 0 24px;">
+      <a href="${data.verifyUrl}" style="display:inline-block;background:#22C55E;color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:600;font-size:16px;">Verify Email →</a>
+    </td></tr></table>` : ''}
     <p style="color:#64748b;font-size:14px;line-height:1.6;margin:0 0 24px;">Once verified, our team will review your application. You'll receive updates at each step of the process.</p>
     <div style="background:#f8fafc;border-radius:12px;padding:20px;margin:0 0 24px;">
       <p style="color:#0f172a;font-size:14px;font-weight:600;margin:0 0 12px;">What happens next?</p>
