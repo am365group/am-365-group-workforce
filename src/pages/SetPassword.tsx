@@ -36,31 +36,27 @@ export default function SetPassword() {
 
     setIsSubmitting(true);
     try {
-      // Create auth user with Supabase
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            display_name: email.split("@")[0],
-            user_type: "partner",
-          },
-          emailRedirectTo: window.location.origin + "/partner/dashboard",
+      // Use Edge Function with service-role key so the user is created with
+      // email_confirm: true — partner already verified email via OTP, so Supabase
+      // must NOT send a second confirmation email.
+      const { data, error: fnError } = await supabase.functions.invoke("create-partner-account", {
+        body: {
+          email,
+          password,
+          applicationId,
+          displayName: email.split("@")[0],
         },
       });
 
-      if (authError) throw authError;
+      if (fnError) throw fnError;
+      if (data?.error) throw new Error(data.error);
 
-      // Link the auth user to the partner application
-      if (authData.user) {
-        await supabase
-          .from("partner_applications")
-          .update({ user_id: authData.user.id, status: "email_verified" })
-          .eq("id", applicationId);
-      }
+      // Sign the new user in immediately (they are already email-confirmed)
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      if (signInError) throw signInError;
 
       setIsDone(true);
-      toast({ title: "Account created! 🎉", description: "Welcome to AM:365. Redirecting to your dashboard..." });
+      toast({ title: "Account created!", description: "Welcome to AM:365. Redirecting to your dashboard..." });
 
       // Clean up localStorage
       localStorage.removeItem("am365_application_id");
@@ -72,7 +68,7 @@ export default function SetPassword() {
     } catch (err: any) {
       toast({
         title: "Account creation failed",
-        description: err.message || "Something went wrong.",
+        description: err.message || "Something went wrong. Please try again.",
         variant: "destructive",
       });
     } finally {

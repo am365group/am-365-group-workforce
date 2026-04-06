@@ -72,11 +72,44 @@ export default function VerifyEmail() {
   };
 
   const handleResend = async () => {
+    if (!applicationId) {
+      toast({ title: "Error", description: "Application not found. Please register again.", variant: "destructive" });
+      return;
+    }
     try {
+      // Generate a fresh 6-digit code
+      const newCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+
+      // Fetch first name and update the verification code in DB
+      const { data: appData, error: fetchError } = await supabase
+        .from("partner_applications")
+        .select("first_name")
+        .eq("id", applicationId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      await supabase
+        .from("partner_applications")
+        .update({ verification_code: newCode, verification_expires_at: expiresAt })
+        .eq("id", applicationId);
+
+      const verifyUrl = `${window.location.origin}/verify-email?id=${applicationId}&email=${encodeURIComponent(email)}&code=${newCode}`;
+
       await supabase.functions.invoke("send-registration-email", {
-        body: { to: email, template: "registration", data: { firstName: "", verificationCode: "", applicationId } },
+        body: {
+          to: email,
+          template: "registration",
+          data: {
+            firstName: appData?.first_name ?? "",
+            verificationCode: newCode,
+            applicationId,
+            verifyUrl,
+          },
+        },
       });
-      toast({ title: "Code resent!", description: "Check your inbox for the new code." });
+      toast({ title: "Code resent!", description: "Check your inbox for the new verification code." });
     } catch {
       toast({ title: "Failed to resend", description: "Please try again later.", variant: "destructive" });
     }
