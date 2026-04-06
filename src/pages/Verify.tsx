@@ -51,30 +51,23 @@ export default function Verify() {
 
     setIsLoading(true);
     try {
-      console.log("Verifying code for application via edge function:", applicationId);
+      console.log("Verifying code for application via secure RPC:", applicationId);
 
-      const { data: verifyResult, error: verifyError } = await supabase.functions.invoke(
-        "verify-registration",
+      const { data: app, error } = await supabase.rpc(
+        "verify_partner_application",
         {
-          body: {
-            appId: applicationId,
-            verificationCode,
-          },
+          app_id: applicationId,
+          code: verificationCode,
         }
       );
 
-      console.log("Verification function result:", { verifyResult, verifyError });
+      console.log("RPC verification result:", { app, error });
 
-      if (verifyError) {
-        throw verifyError;
+      if (error || !app) {
+        throw new Error(error?.message || "Application not found. Please check your verification link or register again.");
       }
 
-      if (!verifyResult?.success) {
-        throw new Error(verifyResult?.message || "Application not found. Please check your verification link or register again.");
-      }
-
-      const app = verifyResult.data;
-      setEmail(app.email);
+      setEmail((app as any).email);
       setStep("password");
       toast({
         title: "Code verified! ✅",
