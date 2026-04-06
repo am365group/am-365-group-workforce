@@ -98,24 +98,33 @@ export default function Register() {
       if (error) throw error;
 
       // Send verification email
+      const verifyUrl = `${window.location.origin}/verify-email?id=${applicationId}&email=${encodeURIComponent(form.email)}&code=${verificationCode}`;
       try {
         await supabase.functions.invoke("send-registration-email", {
           body: {
             to: form.email,
-            firstName: form.firstName,
-            verificationCode,
-            applicationId,
+            template: "registration",
+            data: {
+              firstName: form.firstName,
+              verificationCode,
+              applicationId,
+              verifyUrl,
+            },
           },
         });
       } catch (emailErr) {
         console.warn("Email sending failed, but registration saved:", emailErr);
       }
 
+      // Store for verify page
+      localStorage.setItem("am365_application_id", applicationId);
+      localStorage.setItem("am365_application_email", form.email);
+
       toast({
         title: "Registration submitted! ✅",
-        description: "Check your email for a verification code. We'll review your application shortly.",
+        description: "Please verify your email to continue.",
       });
-      navigate("/login");
+      navigate(`/verify-email?id=${applicationId}&email=${encodeURIComponent(form.email)}`);
     } catch (err: any) {
       console.error("Registration error:", err);
       toast({
