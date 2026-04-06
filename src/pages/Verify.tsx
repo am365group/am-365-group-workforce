@@ -25,14 +25,22 @@ export default function Verify() {
 
   useEffect(() => {
     const appId = searchParams.get("appId");
+    const code = searchParams.get("code");
+
+    console.log("URL parameters:", { appId, code });
+
     if (appId) {
       setApplicationId(appId);
+    }
+    if (code) {
+      setVerificationCode(code);
     }
   }, [searchParams]);
 
   const handleVerifyCode = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!verificationCode || !applicationId) {
+      console.error("Missing verification data:", { verificationCode, applicationId });
       toast({
         title: "Missing information",
         description: "Please enter the verification code and ensure app ID is set.",
@@ -43,6 +51,8 @@ export default function Verify() {
 
     setIsLoading(true);
     try {
+      console.log("Verifying code for application:", applicationId);
+
       // Get the application to verify code and get email
       const { data: app, error: fetchError } = await supabase
         .from("partner_applications")
@@ -50,17 +60,29 @@ export default function Verify() {
         .eq("id", applicationId)
         .single();
 
-      if (fetchError || !app) {
-        throw new Error("Application not found");
+      console.log("Database query result:", { app, fetchError });
+
+      if (fetchError) {
+        console.error("Database fetch error:", fetchError);
+        throw new Error(`Database error: ${fetchError.message}`);
       }
+
+      if (!app) {
+        console.error("No application found for ID:", applicationId);
+        throw new Error("Application not found. Please check your verification link or register again.");
+      }
+
+      console.log("Application found:", { id: app.id, email: app.email, status: app.status });
 
       // Check if code is expired
       if (new Date(app.verification_expires_at) < new Date()) {
+        console.error("Code expired:", app.verification_expires_at);
         throw new Error("Verification code has expired. Please register again.");
       }
 
       // Check if code matches
       if (app.verification_code !== verificationCode) {
+        console.error("Code mismatch:", { expected: app.verification_code, received: verificationCode });
         throw new Error("Invalid verification code");
       }
 

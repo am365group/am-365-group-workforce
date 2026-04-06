@@ -51,6 +51,12 @@ const requiredDocuments: Omit<DocumentItem, "id" | "status" | "file_url" | "uplo
   },
 ];
 
+// Security classification for documents
+const getDocumentSecurityLevel = (documentName: string): "secure" | "non-secure" => {
+  const secureDocuments = ["Swedish ID or Passport", "Bank Account Details"];
+  return secureDocuments.includes(documentName) ? "secure" : "non-secure";
+};
+
 export default function PartnerDocuments() {
   const { toast } = useToast();
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
@@ -162,7 +168,10 @@ export default function PartnerDocuments() {
       if (!app) throw new Error("Application not found");
 
       const fileName = `${document.id}-${Date.now()}-${file.name}`;
-      const filePath = `partner-documents/${app.id}/${fileName}`;
+      const securityLevel = getDocumentSecurityLevel(document.name);
+      const filePath = `${securityLevel}/partner-documents/${app.id}/${fileName}`;
+
+      console.log(`Uploading ${document.name} to ${securityLevel} folder:`, filePath);
 
       // Upload file to storage
       const { error: uploadError, data } = await supabase.storage
