@@ -216,7 +216,7 @@ export default function Verify() {
           </Card>
         )}
 
-        {/* Password Setup Step */}
+        {/* Pass Setup Step */}
         {step === "password" && (
           <Card className="border shadow-sm">
             <CardHeader className="pb-4">
