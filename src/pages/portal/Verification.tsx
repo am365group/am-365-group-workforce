@@ -135,6 +135,7 @@ export default function AdminVerification() {
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState("pending");
   const [partnerDocs, setPartnerDocs] = useState<PartnerDoc[]>([]);
+  const [docThumbnails, setDocThumbnails] = useState<Record<string, string>>({});
   const [rejectionCode, setRejectionCode] = useState("blurry_photo");
   const [docPreviewUrl, setDocPreviewUrl] = useState<string | null>(null);
   const [docPreviewIsPdf, setDocPreviewIsPdf] = useState(false);
@@ -196,6 +197,7 @@ export default function AdminVerification() {
       .select("id, document_type, file_url, status, rejection_reason")
       .eq("application_id", app.id);
     setPartnerDocs(docs || []);
+    loadDocThumbnails(docs || []);
   };
 
   const handleDocPreview = async (doc: PartnerDoc) => {
@@ -206,6 +208,21 @@ export default function AdminVerification() {
       setDocPreviewUrl(data.signedUrl);
       setDocPreviewIsPdf(doc.file_url.toLowerCase().endsWith(".pdf"));
     }
+  };
+
+  const loadDocThumbnails = async (docs: PartnerDoc[]) => {
+    const thumbs: Record<string, string> = {};
+    for (const doc of docs) {
+      if (doc.file_url && !doc.file_url.toLowerCase().endsWith(".pdf")) {
+        try {
+          const { data } = await supabase.storage
+            .from("partner-documents")
+            .createSignedUrl(doc.file_url, 3600);
+          if (data?.signedUrl) thumbs[doc.id] = data.signedUrl;
+        } catch { /* skip */ }
+      }
+    }
+    setDocThumbnails(thumbs);
   };
 
   const handleApprove = async () => {
@@ -342,6 +359,7 @@ export default function AdminVerification() {
       .select("id, document_type, file_url, status, rejection_reason")
       .eq("application_id", app.id);
     setPartnerDocs(docs || []);
+    loadDocThumbnails(docs || []);
     setShowInfoDialog(true);
   };
 
@@ -629,19 +647,49 @@ export default function AdminVerification() {
                 {partnerDocs.length === 0 ? (
                   <p className="text-sm text-muted-foreground p-3 rounded-lg bg-muted/50 border">No documents uploaded yet.</p>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="grid grid-cols-1 gap-3">
                     {partnerDocs.map((doc) => (
-                      <div key={doc.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border">
-                        <div className="flex items-center gap-3">
-                          <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <div key={doc.id} className="rounded-xl border overflow-hidden">
+                        {/* Thumbnail if image */}
+                        {docThumbnails[doc.id] ? (
+                          <div
+                            className="relative bg-black/5 cursor-pointer group"
+                            style={{ height: "160px" }}
+                            onClick={() => handleDocPreview(doc)}
+                          >
+                            <img
+                              src={docThumbnails[doc.id]}
+                              alt={doc.document_type}
+                              className="w-full h-full object-contain"
+                            />
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                              <ZoomIn className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow" />
+                            </div>
+                            <div className="absolute top-2 left-2">
+                              <Badge variant={doc.status === "verified" ? "default" : doc.status === "rejected" ? "destructive" : "secondary"} className="text-xs shadow">
+                                {doc.status === "uploaded" ? "Pending Review" : doc.status}
+                              </Badge>
+                            </div>
+                          </div>
+                        ) : (
+                          <div
+                            className="flex items-center justify-center bg-muted/50 cursor-pointer hover:bg-muted transition-colors"
+                            style={{ height: "80px" }}
+                            onClick={() => handleDocPreview(doc)}
+                          >
+                            <FileText className="h-8 w-8 text-muted-foreground" />
+                          </div>
+                        )}
+                        {/* Doc info bar */}
+                        <div className="flex items-center justify-between px-3 py-2 border-t bg-card">
                           <div>
                             <p className="text-sm font-medium capitalize">{doc.document_type.replace(/_/g, " ")}</p>
-                            <p className="text-xs text-muted-foreground capitalize">{doc.status}</p>
+                            <p className="text-xs text-muted-foreground font-mono">{doc.file_url.split("/").pop()}</p>
                           </div>
+                          <Button variant="ghost" size="sm" onClick={() => handleDocPreview(doc)}>
+                            <Eye className="h-3.5 w-3.5 mr-1" /> View
+                          </Button>
                         </div>
-                        <Button variant="outline" size="sm" onClick={() => handleDocPreview(doc)}>
-                          <Eye className="h-3.5 w-3.5 mr-1" /> View
-                        </Button>
                       </div>
                     ))}
                   </div>
@@ -859,19 +907,49 @@ export default function AdminVerification() {
               {partnerDocs.length > 0 && (
                 <div className="space-y-2">
                   <p className="font-semibold">Submitted Documents</p>
-                  <div className="space-y-2">
+                  <div className="grid grid-cols-1 gap-3">
                     {partnerDocs.map(doc => (
-                      <div key={doc.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border">
-                        <div className="flex items-center gap-3">
-                          <FileText className="h-4 w-4 text-muted-foreground" />
+                      <div key={doc.id} className="rounded-xl border overflow-hidden">
+                        {/* Thumbnail if image */}
+                        {docThumbnails[doc.id] ? (
+                          <div
+                            className="relative bg-black/5 cursor-pointer group"
+                            style={{ height: "160px" }}
+                            onClick={() => handleDocPreview(doc)}
+                          >
+                            <img
+                              src={docThumbnails[doc.id]}
+                              alt={doc.document_type}
+                              className="w-full h-full object-contain"
+                            />
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                              <ZoomIn className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow" />
+                            </div>
+                            <div className="absolute top-2 left-2">
+                              <Badge variant={doc.status === "verified" ? "default" : doc.status === "rejected" ? "destructive" : "secondary"} className="text-xs shadow">
+                                {doc.status === "uploaded" ? "Pending Review" : doc.status}
+                              </Badge>
+                            </div>
+                          </div>
+                        ) : (
+                          <div
+                            className="flex items-center justify-center bg-muted/50 cursor-pointer hover:bg-muted transition-colors"
+                            style={{ height: "80px" }}
+                            onClick={() => handleDocPreview(doc)}
+                          >
+                            <FileText className="h-8 w-8 text-muted-foreground" />
+                          </div>
+                        )}
+                        {/* Doc info bar */}
+                        <div className="flex items-center justify-between px-3 py-2 border-t bg-card">
                           <div>
                             <p className="text-sm font-medium capitalize">{doc.document_type.replace(/_/g, " ")}</p>
-                            <p className="text-xs text-muted-foreground capitalize">{doc.status}</p>
+                            <p className="text-xs text-muted-foreground font-mono">{doc.file_url.split("/").pop()}</p>
                           </div>
+                          <Button variant="ghost" size="sm" onClick={() => handleDocPreview(doc)}>
+                            <Eye className="h-3.5 w-3.5 mr-1" /> View
+                          </Button>
                         </div>
-                        <Button variant="outline" size="sm" onClick={() => handleDocPreview(doc)}>
-                          <Eye className="h-3.5 w-3.5 mr-1" /> View
-                        </Button>
                       </div>
                     ))}
                   </div>

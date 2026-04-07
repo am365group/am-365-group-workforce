@@ -25,6 +25,7 @@ type DocRecord = {
   status: string;
   rejection_reason: string | null;
   created_at: string;
+  uploaded_at: string | null;
 };
 
 export default function PartnerDocuments() {
@@ -34,6 +35,7 @@ export default function PartnerDocuments() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState<Record<string, boolean>>({});
   const [selectedIdType, setSelectedIdType] = useState("passport");
+  const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewIsPdf, setPreviewIsPdf] = useState(false);
   const [previewDocName, setPreviewDocName] = useState("");
@@ -64,12 +66,28 @@ export default function PartnerDocuments() {
           .eq("application_id", app.id)
           .order("created_at", { ascending: false });
         setDocuments(docs || []);
+        loadThumbnails(docs || []);
       }
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadThumbnails = async (docs: DocRecord[]) => {
+    const thumbs: Record<string, string> = {};
+    for (const doc of docs) {
+      if (doc.file_url && !doc.file_url.toLowerCase().endsWith(".pdf")) {
+        try {
+          const { data } = await supabase.storage
+            .from("partner-documents")
+            .createSignedUrl(doc.file_url, 3600);
+          if (data?.signedUrl) thumbs[doc.id] = data.signedUrl;
+        } catch { /* skip */ }
+      }
+    }
+    setThumbnails(thumbs);
   };
 
   const isManualPath = application?.reg_path === "manual";
@@ -261,16 +279,46 @@ export default function PartnerDocuments() {
 
                 {/* Uploaded / Verified state */}
                 {(status === "uploaded" || status === "verified") && doc && (
-                  <div className="flex items-center gap-3 p-4 rounded-xl bg-muted/50 border">
-                    <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium capitalize">{doc.document_type.replace(/_/g, " ")}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Submitted {new Date(doc.created_at).toLocaleDateString("sv-SE")}
-                      </p>
+                  <div className="space-y-3">
+                    {/* Thumbnail or PDF indicator */}
+                    {thumbnails[doc.id] ? (
+                      <div className="relative rounded-xl overflow-hidden border bg-black/5 h-48">
+                        <img
+                          src={thumbnails[doc.id]}
+                          alt="Document preview"
+                          className="w-full h-full object-contain cursor-pointer"
+                          onClick={() => handlePreview(doc)}
+                        />
+                        <div className="absolute top-2 right-2 flex gap-1">
+                          <Button variant="secondary" size="sm" className="h-7 text-xs shadow" onClick={() => handlePreview(doc)}>
+                            <Eye className="h-3 w-3 mr-1" /> View full
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/50 border">
+                        <FileText className="h-8 w-8 text-muted-foreground shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">PDF Document</p>
+                          <p className="text-xs text-muted-foreground">{doc.file_url.split("/").pop()}</p>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => handlePreview(doc)}>
+                          <Eye className="h-3.5 w-3.5 mr-1" /> View
+                        </Button>
+                      </div>
+                    )}
+                    {/* File info row */}
+                    <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/50 border">
+                      <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium capitalize">{doc.document_type.replace(/_/g, " ")}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {doc.file_url.split("/").pop()} · Submitted {new Date(doc.created_at).toLocaleDateString("sv-SE")}
+                        </p>
+                      </div>
+                      {status === "verified" && <CheckCircle className="h-5 w-5 text-primary shrink-0" />}
+                      {status === "uploaded" && <Clock className="h-5 w-5 text-amber-500 shrink-0" />}
                     </div>
-                    {status === "verified" && <CheckCircle className="h-5 w-5 text-primary shrink-0" />}
-                    {status === "uploaded" && <Clock className="h-5 w-5 text-amber-500 shrink-0" />}
                   </div>
                 )}
 
@@ -347,6 +395,7 @@ export default function PartnerDocuments() {
                       <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
                       <div>
                         <p className="font-medium capitalize text-sm">{doc.document_type.replace(/_/g, " ")}</p>
+                        <p className="text-xs text-muted-foreground font-mono">{doc.file_url.split("/").pop()}</p>
                         <p className="text-xs text-muted-foreground">
                           Uploaded {new Date(doc.created_at).toLocaleDateString("sv-SE")}
                         </p>
