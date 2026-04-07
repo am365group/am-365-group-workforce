@@ -1,102 +1,186 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState, useEffect } from "react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Clock, TrendingUp, Truck, DollarSign, Download, Filter, Calendar } from "lucide-react";
+import { Clock, TrendingUp, Truck, DollarSign, Download, Search, Loader2, Calendar } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
-const history = [
-  { date: "Apr 1, 2024", client: "Wolt", area: "Södermalm", hours: 8, deliveries: 14, distance: "42 km", amount: "1,440 SEK", status: "Approved" },
-  { date: "Mar 31, 2024", client: "Wolt", area: "Vasastan", hours: 6, deliveries: 11, distance: "35 km", amount: "1,080 SEK", status: "Approved" },
-  { date: "Mar 30, 2024", client: "Wolt", area: "Kungsholmen", hours: 7, deliveries: 12, distance: "38 km", amount: "1,260 SEK", status: "Approved" },
-  { date: "Mar 29, 2024", client: "Foodora", area: "Östermalm", hours: 5, deliveries: 9, distance: "28 km", amount: "900 SEK", status: "Pending" },
-  { date: "Mar 28, 2024", client: "Wolt", area: "Södermalm", hours: 8, deliveries: 15, distance: "48 km", amount: "1,440 SEK", status: "Approved" },
-  { date: "Mar 27, 2024", client: "Foodora", area: "Vasastan", hours: 6, deliveries: 10, distance: "32 km", amount: "1,080 SEK", status: "Approved" },
-  { date: "Mar 26, 2024", client: "Wolt", area: "City Center", hours: 8, deliveries: 16, distance: "52 km", amount: "1,440 SEK", status: "Approved" },
-  { date: "Mar 25, 2024", client: "Wolt", area: "Kungsholmen", hours: 7, deliveries: 13, distance: "40 km", amount: "1,260 SEK", status: "Approved" },
-];
+type DeliveryRow = {
+  id: string;
+  import_batch_id: string;
+  period_label: string | null;
+  imported_at: string;
+  partner_name: string;
+  email: string | null;
+  team: string | null;
+  weekly_max_hours: string | null;
+  amount_excl_tips: number;
+  amount_incl_tips: number;
+  tips: number;
+  adjustments: number;
+  task_related_amount: number;
+};
 
-const monthlyStats = [
-  { label: "Total Deliveries", value: "284", icon: Truck, color: "text-primary" },
-  { label: "Hours Worked", value: "142h", icon: Clock, color: "text-info" },
-  { label: "Total Distance", value: "892 km", icon: TrendingUp, color: "text-warning" },
-  { label: "Total Earned", value: "25,560 SEK", icon: DollarSign, color: "text-primary" },
-];
+function fmtSek(n: number): string {
+  return `${n.toLocaleString("sv-SE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} SEK`;
+}
 
 export default function PartnerWorkHistory() {
+  const [rows, setRows]             = useState<DeliveryRow[]>([]);
+  const [appEmail, setAppEmail]     = useState<string>("");
+  const [loading, setLoading]       = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const { toast } = useToast();
+
+  useEffect(() => { loadHistory(); }, []);
+
+  const loadHistory = async () => {
+    setLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      await supabase.rpc("link_my_application");
+
+      const { data: app } = await supabase
+        .from("partner_applications")
+        .select("email, wolt_partner_email")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (!app) return;
+
+      // Look up by wolt_partner_email if set, otherwise partner's own email
+      const lookupEmail = app.wolt_partner_email || app.email;
+      setAppEmail(lookupEmail);
+
+      const { data, error } = await supabase
+        .from("wolt_delivery_imports")
+        .select("*")
+        .ilike("email", lookupEmail)
+        .order("imported_at", { ascending: false });
+
+      if (error) throw error;
+      setRows((data as DeliveryRow[]) || []);
+    } catch (err: any) {
+      toast({ title: "Error loading work history", description: err.message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExport = () => {
+    const header = "Period;Team;Amount (excl tips);Amount (incl tips);Tips;Adjustments;Task Related;Imported At";
+    const lines = rows.map(r =>
+      [r.period_label ?? "", r.team ?? "", r.amount_excl_tips, r.amount_incl_tips,
+       r.tips, r.adjustments, r.task_related_amount, r.imported_at].join(";")
+    );
+    const blob = new Blob([[header, ...lines].join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "work-history.csv";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const totalEarnings = rows.reduce((s, r) => s + r.amount_excl_tips, 0);
+  const totalTips     = rows.reduce((s, r) => s + r.tips, 0);
+  const totalIncl     = rows.reduce((s, r) => s + r.amount_incl_tips, 0);
+  const uniquePeriods = new Set(rows.map(r => r.period_label).filter(Boolean)).size;
+
+  const filtered = rows.filter(r =>
+    !searchTerm ||
+    `${r.period_label ?? ""} ${r.team ?? ""}`.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Work History</h1>
-          <p className="text-base text-muted-foreground mt-1">Your completed assignments, deliveries, and earnings</p>
+          <p className="text-base text-muted-foreground mt-1">Your Wolt delivery earnings and work data</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline"><Filter className="mr-2 h-4 w-4" /> Filter</Button>
-          <Button variant="outline"><Download className="mr-2 h-4 w-4" /> Export CSV</Button>
-        </div>
+        {rows.length > 0 && (
+          <Button variant="outline" onClick={handleExport}>
+            <Download className="mr-2 h-4 w-4" /> Export CSV
+          </Button>
+        )}
       </div>
 
-      {/* Monthly Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
-        {monthlyStats.map((stat) => (
-          <Card key={stat.label} className="hover:shadow-md transition-shadow">
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between mb-2">
-                <stat.icon className={`h-5 w-5 ${stat.color}`} />
-                <Badge variant="outline" className="text-xs">This Month</Badge>
-              </div>
-              <p className="text-3xl font-bold">{stat.value}</p>
-              <p className="text-sm text-muted-foreground mt-1">{stat.label}</p>
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card><CardContent className="p-5 text-center"><Truck className="h-5 w-5 text-primary mx-auto mb-2" /><p className="text-xl font-bold">{rows.length}</p><p className="text-sm text-muted-foreground mt-1">Import Periods</p></CardContent></Card>
+        <Card><CardContent className="p-5 text-center"><DollarSign className="h-5 w-5 text-primary mx-auto mb-2" /><p className="text-xl font-bold text-primary">{fmtSek(totalEarnings)}</p><p className="text-sm text-muted-foreground mt-1">Total (excl. tips)</p></CardContent></Card>
+        <Card><CardContent className="p-5 text-center"><TrendingUp className="h-5 w-5 text-amber-500 mx-auto mb-2" /><p className="text-xl font-bold text-amber-600">{fmtSek(totalTips)}</p><p className="text-sm text-muted-foreground mt-1">Total Tips</p></CardContent></Card>
+        <Card><CardContent className="p-5 text-center"><Clock className="h-5 w-5 text-blue-500 mx-auto mb-2" /><p className="text-xl font-bold">{fmtSek(totalIncl)}</p><p className="text-sm text-muted-foreground mt-1">Total (incl. tips)</p></CardContent></Card>
+      </div>
+
+      {rows.length === 0 ? (
+        <Card>
+          <CardContent className="p-12 text-center">
+            <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h2 className="text-xl font-semibold mb-2">No delivery data yet</h2>
+            <p className="text-muted-foreground">
+              Your Wolt delivery data will appear here once AM:365 imports your weekly reports.
+              {appEmail && <span className="block mt-1 text-xs font-mono text-muted-foreground">Linked to: {appEmail}</span>}
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          <div className="relative max-w-sm">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Search period, team…" className="pl-9" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+          </div>
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Period</TableHead>
+                    <TableHead>Team / City</TableHead>
+                    <TableHead className="text-right">Amount (excl. tips)</TableHead>
+                    <TableHead className="text-right">Tips</TableHead>
+                    <TableHead className="text-right">Total (incl. tips)</TableHead>
+                    <TableHead className="text-right">Adjustments</TableHead>
+                    <TableHead>Imported</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map(r => (
+                    <TableRow key={r.id} className="hover:bg-muted/40">
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4 text-muted-foreground" />
+                          <span className="font-medium text-sm">{r.period_label ?? "—"}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{r.team ?? "—"}</TableCell>
+                      <TableCell className="text-right font-medium text-sm text-primary">{fmtSek(r.amount_excl_tips)}</TableCell>
+                      <TableCell className="text-right text-sm text-amber-600">{r.tips > 0 ? fmtSek(r.tips) : "—"}</TableCell>
+                      <TableCell className="text-right text-sm font-semibold">{fmtSek(r.amount_incl_tips)}</TableCell>
+                      <TableCell className={`text-right text-sm ${r.adjustments < 0 ? "text-destructive" : r.adjustments > 0 ? "text-emerald-600" : "text-muted-foreground"}`}>
+                        {r.adjustments !== 0 ? fmtSek(r.adjustments) : "—"}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{new Date(r.imported_at).toLocaleDateString("sv-SE")}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
-        ))}
-      </div>
-
-      {/* Activity Table */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-xl flex items-center gap-2"><Clock className="h-5 w-5 text-primary" /> Activity Log</CardTitle>
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="text-xs">
-              <Calendar className="h-3 w-3 mr-1" /> March – April 2024
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="text-sm">Date</TableHead>
-                <TableHead className="text-sm">Client</TableHead>
-                <TableHead className="text-sm">Area</TableHead>
-                <TableHead className="text-sm">Hours</TableHead>
-                <TableHead className="text-sm">Deliveries</TableHead>
-                <TableHead className="text-sm">Distance</TableHead>
-                <TableHead className="text-sm">Amount</TableHead>
-                <TableHead className="text-sm">Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {history.map((row, i) => (
-                <TableRow key={i} className="hover:bg-muted/50">
-                  <TableCell className="font-medium">{row.date}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="text-xs">{row.client}</Badge>
-                  </TableCell>
-                  <TableCell>{row.area}</TableCell>
-                  <TableCell>{row.hours}h</TableCell>
-                  <TableCell>{row.deliveries}</TableCell>
-                  <TableCell>{row.distance}</TableCell>
-                  <TableCell className="font-semibold">{row.amount}</TableCell>
-                  <TableCell>
-                    <Badge variant={row.status === "Approved" ? "default" : "secondary"}>{row.status}</Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+        </>
+      )}
     </div>
   );
 }

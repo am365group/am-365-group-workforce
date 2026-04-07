@@ -80,6 +80,9 @@ export default function PartnerProfile() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      // Auto-link application.user_id by email so RLS queries succeed
+      await supabase.rpc("link_my_application");
+
       const { data, error } = await supabase
         .from("partner_applications")
         .select("*")
