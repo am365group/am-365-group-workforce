@@ -211,7 +211,7 @@ export default function AdminVerification() {
     if (!selectedApp) return;
     setActionLoading(true);
     try {
-      await supabase
+      const { error: updateError } = await supabase
         .from("partner_applications")
         .update({
           status: "verified",
@@ -223,30 +223,30 @@ export default function AdminVerification() {
         })
         .eq("id", selectedApp.id);
 
-      // Send verification done email
-      await supabase.functions.invoke("send-registration-email", {
+      if (updateError) throw updateError;
+
+      // Send verification done email (non-blocking)
+      supabase.functions.invoke("send-registration-email", {
         body: { to: selectedApp.email, template: "verificationDone", data: { firstName: selectedApp.first_name } },
       });
 
-      await supabase.from("onboarding_events").insert({
-        application_id: selectedApp.id,
-        event_type: "verified",
-        notes: reviewNotes || "Application approved by verifier",
-      });
-
-      // Structured audit log entry
-      await supabase.rpc("log_audit_event", {
-        p_action: "application_approved",
-        p_entity_type: "partner_application",
-        p_entity_id: selectedApp.id,
-        p_after_values: { status: "verified", notes: reviewNotes },
-      });
+      // Audit log (non-blocking – best effort)
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        supabase.rpc("log_audit_event", {
+          p_user_id: user.id,
+          p_action: "application_approved",
+          p_entity_type: "partner_application",
+          p_entity_id: selectedApp.id,
+          p_after: { status: "verified", notes: reviewNotes },
+        });
+      }
 
       toast({ title: "Application approved", description: `${selectedApp.first_name} ${selectedApp.last_name} has been verified.` });
       setShowReviewDialog(false);
       loadApplications();
     } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      toast({ title: "Error approving application", description: err.message, variant: "destructive" });
     } finally {
       setActionLoading(false);
     }
@@ -259,19 +259,21 @@ export default function AdminVerification() {
 
     setActionLoading(true);
     try {
-      await supabase
+      const { error: updateError } = await supabase
         .from("partner_applications")
         .update({ status: "rejected", review_notes: fullReason })
         .eq("id", selectedApp.id);
 
-      // Update all pending docs with the rejection reason
+      if (updateError) throw updateError;
+
+      // Update all pending docs with the rejection reason (non-blocking)
       for (const doc of partnerDocs.filter(d => d.status === "uploaded")) {
-        await supabase.from("partner_documents")
+        supabase.from("partner_documents")
           .update({ status: "rejected", rejection_reason: fullReason })
           .eq("id", doc.id);
       }
 
-      await supabase.functions.invoke("send-registration-email", {
+      supabase.functions.invoke("send-registration-email", {
         body: {
           to: selectedApp.email,
           template: "notification",
@@ -279,24 +281,22 @@ export default function AdminVerification() {
         },
       });
 
-      await supabase.from("onboarding_events").insert({
-        application_id: selectedApp.id,
-        event_type: "rejected",
-        notes: fullReason,
-      });
-
-      await supabase.rpc("log_audit_event", {
-        p_action: "application_rejected",
-        p_entity_type: "partner_application",
-        p_entity_id: selectedApp.id,
-        p_after_values: { status: "rejected", reason_code: rejectionCode, notes: reviewNotes },
-      });
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        supabase.rpc("log_audit_event", {
+          p_user_id: user.id,
+          p_action: "application_rejected",
+          p_entity_type: "partner_application",
+          p_entity_id: selectedApp.id,
+          p_after: { status: "rejected", reason_code: rejectionCode, notes: reviewNotes },
+        });
+      }
 
       toast({ title: "Application rejected", description: "Partner has been notified with the reason." });
       setShowReviewDialog(false);
       loadApplications();
     } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      toast({ title: "Error rejecting application", description: err.message, variant: "destructive" });
     } finally {
       setActionLoading(false);
     }

@@ -51,7 +51,7 @@ export default function PartnerDocuments() {
 
       const { data: app } = await supabase
         .from("partner_applications")
-        .select("id, registration_path")
+        .select("id, reg_path")
         .eq("user_id", user.id)
         .maybeSingle();
 
@@ -72,7 +72,7 @@ export default function PartnerDocuments() {
     }
   };
 
-  const isManualPath = application?.registration_path === "manual";
+  const isManualPath = application?.reg_path === "manual";
 
   // Document slots required per registration path (SOW §3.2)
   const requiredSlots = [

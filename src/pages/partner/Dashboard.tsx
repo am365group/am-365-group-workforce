@@ -200,7 +200,7 @@ export default function PartnerDashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {getRequiredDocuments(application.registration_path).map((doc, i) => {
+            {getRequiredDocuments(application.reg_path).map((doc, i) => {
               const status = getDocStatus(doc.dbTypes);
               const DocIcon = doc.icon;
               return (
