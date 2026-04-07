@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Users, ShieldCheck, Calendar, Building2, Truck,
   DollarSign, FileText, Receipt, BarChart3, Settings, ScrollText,
-  UserCog, MessageSquare, Shield, LogOut,
+  UserCog, MessageSquare, Shield, LogOut, TrendingUp,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -18,6 +18,7 @@ const mainItems = [
   { title: "Scheduling", url: "/portal/scheduling", icon: Calendar },
   { title: "Customers", url: "/portal/customers", icon: Building2 },
   { title: "Delivery Data", url: "/portal/delivery-data", icon: Truck },
+  { title: "Performance", url: "/portal/performance", icon: TrendingUp },
 ];
 
 const financeItems = [
