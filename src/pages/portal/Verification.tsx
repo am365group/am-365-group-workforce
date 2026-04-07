@@ -9,10 +9,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Label } from "@/components/ui/label";
 import {
-  ShieldCheck, CheckCircle, XCircle, Eye, Clock, FileText, User, Camera,
-  Send, Edit, AlertTriangle, Loader2, Search, Filter, MoreHorizontal,
-  Mail, MapPin, Phone, IdCard, Bike, Car
+  ShieldCheck, CheckCircle, XCircle, Eye, Clock, FileText, User,
+  Send, AlertTriangle, Loader2, Search,
+  Mail, MapPin, Phone, Download, ZoomIn, RotateCw, X
 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -36,6 +37,25 @@ type Application = {
   bank_details_verified: boolean | null;
   review_notes: string | null;
   user_id: string | null;
+};
+
+// SOW-defined structured rejection reason codes
+const REJECTION_REASONS = [
+  { value: "blurry_photo", label: "Blurry or illegible photo" },
+  { value: "expired_document", label: "Document is expired" },
+  { value: "name_mismatch", label: "Name does not match application" },
+  { value: "type_not_accepted", label: "Document type not accepted" },
+  { value: "incomplete_document", label: "Document incomplete (missing back side)" },
+  { value: "poor_lighting", label: "Poor lighting or glare" },
+  { value: "other", label: "Other (specify in notes)" },
+];
+
+type PartnerDoc = {
+  id: string;
+  document_type: string;
+  file_url: string;
+  status: string;
+  rejection_reason: string | null;
 };
 
 type Contract = {
@@ -110,6 +130,10 @@ export default function AdminVerification() {
   const [actionLoading, setActionLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState("pending");
+  const [partnerDocs, setPartnerDocs] = useState<PartnerDoc[]>([]);
+  const [rejectionCode, setRejectionCode] = useState("blurry_photo");
+  const [docPreviewUrl, setDocPreviewUrl] = useState<string | null>(null);
+  const [docPreviewIsPdf, setDocPreviewIsPdf] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -142,10 +166,29 @@ export default function AdminVerification() {
     return matchesSearch;
   });
 
-  const handleReview = (app: Application) => {
+  const handleReview = async (app: Application) => {
     setSelectedApp(app);
     setReviewNotes(app.review_notes || "");
+    setRejectionCode("blurry_photo");
+    setDocPreviewUrl(null);
     setShowReviewDialog(true);
+
+    // Load submitted documents for this application
+    const { data: docs } = await supabase
+      .from("partner_documents")
+      .select("id, document_type, file_url, status, rejection_reason")
+      .eq("application_id", app.id);
+    setPartnerDocs(docs || []);
+  };
+
+  const handleDocPreview = async (doc: PartnerDoc) => {
+    const { data } = await supabase.storage
+      .from("partner-documents")
+      .createSignedUrl(doc.file_url, 3600);
+    if (data?.signedUrl) {
+      setDocPreviewUrl(data.signedUrl);
+      setDocPreviewIsPdf(doc.file_url.toLowerCase().endsWith(".pdf"));
+    }
   };
 
   const handleApprove = async () => {
@@ -162,14 +205,21 @@ export default function AdminVerification() {
         body: { to: selectedApp.email, template: "verificationDone", data: { firstName: selectedApp.first_name } },
       });
 
-      // Log onboarding event
       await supabase.from("onboarding_events").insert({
         application_id: selectedApp.id,
         event_type: "verified",
         notes: reviewNotes || "Application approved by verifier",
       });
 
-      toast({ title: "Application approved ✅", description: `${selectedApp.first_name} ${selectedApp.last_name} has been verified.` });
+      // Structured audit log entry
+      await supabase.rpc("log_audit_event", {
+        p_action: "application_approved",
+        p_entity_type: "partner_application",
+        p_entity_id: selectedApp.id,
+        p_after_values: { status: "verified", notes: reviewNotes },
+      });
+
+      toast({ title: "Application approved", description: `${selectedApp.first_name} ${selectedApp.last_name} has been verified.` });
       setShowReviewDialog(false);
       loadApplications();
     } catch (err: any) {
@@ -180,32 +230,46 @@ export default function AdminVerification() {
   };
 
   const handleReject = async () => {
-    if (!selectedApp || !reviewNotes) {
-      toast({ title: "Notes required", description: "Please add rejection reason.", variant: "destructive" });
-      return;
-    }
+    if (!selectedApp) return;
+    const rejectionLabel = REJECTION_REASONS.find(r => r.value === rejectionCode)?.label ?? rejectionCode;
+    const fullReason = reviewNotes ? `${rejectionLabel}: ${reviewNotes}` : rejectionLabel;
+
     setActionLoading(true);
     try {
       await supabase
         .from("partner_applications")
-        .update({ status: "rejected", review_notes: reviewNotes })
+        .update({ status: "rejected", review_notes: fullReason })
         .eq("id", selectedApp.id);
+
+      // Update all pending docs with the rejection reason
+      for (const doc of partnerDocs.filter(d => d.status === "uploaded")) {
+        await supabase.from("partner_documents")
+          .update({ status: "rejected", rejection_reason: fullReason })
+          .eq("id", doc.id);
+      }
 
       await supabase.functions.invoke("send-registration-email", {
         body: {
           to: selectedApp.email,
           template: "notification",
-          data: { firstName: selectedApp.first_name, title: "Application Update", message: `Your application requires attention: ${reviewNotes}` },
+          data: { firstName: selectedApp.first_name, title: "Application Update", message: `Your documents need attention: ${fullReason}` },
         },
       });
 
       await supabase.from("onboarding_events").insert({
         application_id: selectedApp.id,
         event_type: "rejected",
-        notes: reviewNotes,
+        notes: fullReason,
       });
 
-      toast({ title: "Application rejected", description: "Partner has been notified." });
+      await supabase.rpc("log_audit_event", {
+        p_action: "application_rejected",
+        p_entity_type: "partner_application",
+        p_entity_id: selectedApp.id,
+        p_after_values: { status: "rejected", reason_code: rejectionCode, notes: reviewNotes },
+      });
+
+      toast({ title: "Application rejected", description: "Partner has been notified with the reason." });
       setShowReviewDialog(false);
       loadApplications();
     } catch (err: any) {
@@ -478,14 +542,19 @@ export default function AdminVerification() {
           {selectedApp && (
             <div className="space-y-5">
               {/* Application Details */}
-              <div className="grid grid-cols-2 gap-4 p-4 rounded-xl bg-muted/50 border">
+              <div className="grid grid-cols-2 gap-4 p-4 rounded-xl bg-muted/50 border text-sm">
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">Full Name</p>
                   <p className="font-medium">{selectedApp.first_name} {selectedApp.last_name}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">Personal Number</p>
-                  <p className="font-medium font-mono">{selectedApp.personal_number}</p>
+                  {/* Masked for security — Admin role only sees full value via DB function */}
+                  <p className="font-medium font-mono text-muted-foreground tracking-widest">
+                    {selectedApp.personal_number
+                      ? selectedApp.personal_number.replace(/^(\d{8})(.+)$/, "$1-****")
+                      : "—"}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">Email</p>
@@ -498,7 +567,7 @@ export default function AdminVerification() {
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">Address</p>
                   <p className="font-medium">{selectedApp.street_address}{selectedApp.apartment ? `, ${selectedApp.apartment}` : ""}</p>
-                  <p className="text-sm text-muted-foreground">{selectedApp.post_code} {selectedApp.city}</p>
+                  <p className="text-muted-foreground">{selectedApp.post_code} {selectedApp.city}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">Transport</p>
@@ -506,9 +575,56 @@ export default function AdminVerification() {
                 </div>
               </div>
 
+              {/* Submitted Documents */}
+              <div className="space-y-2">
+                <p className="font-semibold text-base">Submitted Documents</p>
+                {partnerDocs.length === 0 ? (
+                  <p className="text-sm text-muted-foreground p-3 rounded-lg bg-muted/50 border">No documents uploaded yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {partnerDocs.map((doc) => (
+                      <div key={doc.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border">
+                        <div className="flex items-center gap-3">
+                          <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <div>
+                            <p className="text-sm font-medium capitalize">{doc.document_type.replace(/_/g, " ")}</p>
+                            <p className="text-xs text-muted-foreground capitalize">{doc.status}</p>
+                          </div>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => handleDocPreview(doc)}>
+                          <Eye className="h-3.5 w-3.5 mr-1" /> View
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Inline document preview */}
+              {docPreviewUrl && (
+                <div className="rounded-xl border overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-2 bg-muted border-b">
+                    <span className="text-sm font-medium">Document Preview</span>
+                    <div className="flex gap-1">
+                      <a href={docPreviewUrl} target="_blank" rel="noopener noreferrer">
+                        <Button variant="ghost" size="sm"><Download className="h-3.5 w-3.5" /></Button>
+                      </a>
+                      <Button variant="ghost" size="sm" onClick={() => setDocPreviewUrl(null)}>
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                  {docPreviewIsPdf ? (
+                    <iframe src={docPreviewUrl} className="w-full h-64" title="Document preview" />
+                  ) : (
+                    <img src={docPreviewUrl} alt="Document" className="w-full max-h-64 object-contain bg-black/5" />
+                  )}
+                </div>
+              )}
+
               {/* Verification Checklist */}
               <div className="space-y-2">
-                <p className="font-semibold">Verification Checklist</p>
+                <p className="font-semibold text-base">Verification Checklist</p>
                 <div className="space-y-1.5">
                   {[
                     { label: "ID Document Verified", checked: selectedApp.id_verified },
@@ -524,13 +640,28 @@ export default function AdminVerification() {
                 </div>
               </div>
 
+              {/* Rejection Reason (structured) */}
+              <div className="space-y-2">
+                <Label className="text-base font-semibold">Rejection Reason</Label>
+                <Select value={rejectionCode} onValueChange={setRejectionCode}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REJECTION_REASONS.map(r => (
+                      <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               {/* Review Notes */}
               <div className="space-y-2">
-                <Label>Review Notes / Rejection Reason</Label>
+                <Label>Additional Notes (optional)</Label>
                 <Textarea
                   value={reviewNotes}
                   onChange={(e) => setReviewNotes(e.target.value)}
-                  placeholder="Add notes about this application..."
+                  placeholder="Add any specific details for the partner..."
                   rows={3}
                 />
               </div>

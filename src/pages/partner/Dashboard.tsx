@@ -7,36 +7,32 @@ import { Progress } from "@/components/ui/progress";
 import {
   DollarSign, Clock, Calendar, TrendingUp, ArrowUpRight, FileText,
   Truck, MapPin, Star, ChevronRight, Upload, CheckCircle, AlertCircle,
-  User, Shield, CreditCard, Camera, FileCheck, Info
+  User, Shield, FileCheck, Info, IdCard
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
-const requiredDocuments = [
-  {
-    type: "Swedish ID or Passport",
-    icon: Shield,
-    description: "Upload a clear photo of your Swedish ID card or passport (front & back)",
-    howTo: "Take a photo in good lighting. Ensure all text is readable and no corners are cut off.",
-  },
-  {
-    type: "Proof of Address",
-    icon: MapPin,
-    description: "Recent utility bill, bank statement, or official letter (max 3 months old)",
-    howTo: "Download a PDF from your bank or take a photo of a physical letter showing your name and address.",
-  },
-  {
-    type: "Bank Account Details",
-    icon: CreditCard,
-    description: "Screenshot or document showing your bank account number and clearing number",
-    howTo: "Log into your bank app, navigate to account details, and take a screenshot showing account & clearing numbers.",
-  },
-  {
-    type: "Profile Photo",
-    icon: Camera,
-    description: "A clear headshot photo for your partner profile",
-    howTo: "Use a recent photo with a neutral background. Face should be clearly visible.",
-  },
-];
+// SOW §3.2: all partners need an ID doc; manual-path partners also need Skatt ID
+const getRequiredDocuments = (registrationPath?: string) => {
+  const docs = [
+    {
+      type: "Identity Document",
+      dbTypes: ["driving_licence", "passport", "national_id", "residency_card"],
+      icon: Shield,
+      description: "One valid photo ID: Driving Licence, Passport, National ID Card, or Residency Card (front & back if applicable)",
+      howTo: "Take a clear photo in good lighting. All text must be readable and no corners cut off. Upload front AND back for card-type documents.",
+    },
+  ];
+  if (registrationPath === "manual") {
+    docs.push({
+      type: "Skatt ID Certificate",
+      dbTypes: ["skatt_id"],
+      icon: IdCard,
+      description: "Your tax registration certificate (Skattsedel) issued by Skatteverket",
+      howTo: "Log in to Mina Sidor at skatteverket.se, go to 'Min skattesedel', and download the PDF.",
+    });
+  }
+  return docs;
+};
 
 const stats = [
   { label: "Current Balance", value: "12,450 SEK", icon: DollarSign, change: "+8.2%", color: "text-primary", bg: "bg-primary/10" },
@@ -104,8 +100,8 @@ export default function PartnerDashboard() {
     }
   };
 
-  const getDocStatus = (docType: string) => {
-    const doc = documents.find((d) => d.document_type === docType);
+  const getDocStatus = (dbTypes: string[]) => {
+    const doc = documents.find((d) => dbTypes.includes(d.document_type));
     if (!doc) return "missing";
     return doc.status || "uploaded";
   };
@@ -204,8 +200,8 @@ export default function PartnerDashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {requiredDocuments.map((doc, i) => {
-              const status = getDocStatus(doc.type);
+            {getRequiredDocuments(application.registration_path).map((doc, i) => {
+              const status = getDocStatus(doc.dbTypes);
               const DocIcon = doc.icon;
               return (
                 <div key={i} className={`p-5 rounded-xl border-2 transition-all ${

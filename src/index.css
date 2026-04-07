@@ -34,7 +34,7 @@
     --input: 220 13% 91%;
     --ring: 142 71% 45%;
 
-    --radius: 0.5rem;
+    --radius: 0.625rem;
 
     --sidebar-background: 222 47% 11%;
     --sidebar-foreground: 210 40% 98%;
@@ -107,18 +107,39 @@
   body {
     @apply bg-background text-foreground font-sans;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    font-size: 16px;
+    font-size: 18px;
+    line-height: 1.7;
   }
 
   h1 {
-    @apply text-3xl font-bold tracking-tight;
+    @apply text-4xl font-bold tracking-tight;
   }
 
   h2 {
-    @apply text-2xl font-semibold tracking-tight;
+    @apply text-3xl font-semibold tracking-tight;
   }
 
   h3 {
+    @apply text-2xl font-semibold;
+  }
+
+  h4 {
     @apply text-xl font-semibold;
+  }
+
+  /* Minimum touch targets for 38+ age users — WCAG 2.5.5 */
+  button, [role="button"], input, select, textarea, a {
+    min-height: 48px;
+  }
+
+  /* Inputs need larger text too */
+  input, select, textarea {
+    font-size: 1rem;
+  }
+
+  /* Labels should be clearly readable */
+  label {
+    font-size: 0.95rem;
+    font-weight: 500;
   }
 }
