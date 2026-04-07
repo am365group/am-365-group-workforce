@@ -34,6 +34,7 @@ type Application = {
   transport: string;
   status: string;
   created_at: string;
+  documents_submitted_at: string | null;
   id_verified: boolean | null;
   documents_verified: boolean | null;
   address_verified: boolean | null;
@@ -465,12 +466,18 @@ export default function AdminVerification() {
 
   const statusCounts = {
     pending: applications.filter((a) => ["pending", "email_verified", "under_review"].includes(a.status)).length,
+    inQueue: applications.filter((a) => ["pending", "email_verified"].includes(a.status) && !a.documents_submitted_at).length,
+    readyForReview: applications.filter((a) => a.status === "under_review" || (["pending", "email_verified"].includes(a.status) && !!a.documents_submitted_at)).length,
     verified: applications.filter((a) => ["verified", "contract_sent", "contract_signed"].includes(a.status)).length,
     active: applications.filter((a) => a.status === "active").length,
     rejected: applications.filter((a) => a.status === "rejected").length,
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (app: Application) => {
+    // "In Queue" — partner hasn't submitted docs yet
+    if (!app.documents_submitted_at && ["pending", "email_verified"].includes(app.status)) {
+      return <Badge variant="outline" className="border-slate-400 text-slate-500">In Queue</Badge>;
+    }
     const map: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
       pending: { variant: "outline", label: "Pending" },
       email_verified: { variant: "secondary", label: "Email Verified" },
@@ -481,7 +488,7 @@ export default function AdminVerification() {
       active: { variant: "default", label: "Active" },
       rejected: { variant: "destructive", label: "Rejected" },
     };
-    const cfg = map[status] || { variant: "outline" as const, label: status };
+    const cfg = map[app.status] || { variant: "outline" as const, label: app.status };
     return <Badge variant={cfg.variant}>{cfg.label}</Badge>;
   };
 
@@ -502,8 +509,9 @@ export default function AdminVerification() {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-5 md:grid-cols-4">
-        <Card><CardContent className="p-5 text-center"><p className="text-3xl font-bold text-amber-500">{statusCounts.pending}</p><p className="text-sm text-muted-foreground mt-1">Pending Review</p></CardContent></Card>
+      <div className="grid gap-5 md:grid-cols-5">
+        <Card><CardContent className="p-5 text-center"><p className="text-3xl font-bold text-slate-400">{statusCounts.inQueue}</p><p className="text-sm text-muted-foreground mt-1">In Queue</p></CardContent></Card>
+        <Card><CardContent className="p-5 text-center"><p className="text-3xl font-bold text-amber-500">{statusCounts.readyForReview}</p><p className="text-sm text-muted-foreground mt-1">Ready to Review</p></CardContent></Card>
         <Card><CardContent className="p-5 text-center"><p className="text-3xl font-bold text-primary">{statusCounts.verified}</p><p className="text-sm text-muted-foreground mt-1">Verified / Contract</p></CardContent></Card>
         <Card><CardContent className="p-5 text-center"><p className="text-3xl font-bold text-primary">{statusCounts.active}</p><p className="text-sm text-muted-foreground mt-1">Active Partners</p></CardContent></Card>
         <Card><CardContent className="p-5 text-center"><p className="text-3xl font-bold text-destructive">{statusCounts.rejected}</p><p className="text-sm text-muted-foreground mt-1">Rejected</p></CardContent></Card>
@@ -546,7 +554,7 @@ export default function AdminVerification() {
                         <div>
                           <div className="flex items-center gap-3 mb-1">
                             <p className="text-lg font-semibold">{app.first_name} {app.last_name}</p>
-                            {getStatusBadge(app.status)}
+                            {getStatusBadge(app)}
                           </div>
                           <div className="flex items-center gap-4 text-sm text-muted-foreground">
                             <span className="flex items-center gap-1"><Mail className="h-3.5 w-3.5" /> {app.email}</span>
@@ -555,7 +563,12 @@ export default function AdminVerification() {
                           <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
                             <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {app.city}</span>
                             <span>{getTransportIcon(app.transport)} {app.transport}</span>
-                            <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> {new Date(app.created_at).toLocaleDateString()}</span>
+                            <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> Applied {new Date(app.created_at).toLocaleDateString()}</span>
+                            {app.documents_submitted_at && (
+                              <span className="flex items-center gap-1 text-amber-600">
+                                <Send className="h-3.5 w-3.5" /> Submitted {new Date(app.documents_submitted_at).toLocaleDateString()}
+                              </span>
+                            )}
                           </div>
                           {app.review_notes && (
                             <p className="text-sm text-amber-600 mt-2 flex items-start gap-1">
@@ -566,9 +579,15 @@ export default function AdminVerification() {
                       </div>
                       <div className="flex items-center gap-2">
                         {["pending", "email_verified", "under_review"].includes(app.status) && (
-                          <Button variant="outline" size="sm" onClick={() => handleReview(app)}>
-                            <Eye className="mr-1.5 h-3.5 w-3.5" /> Review
-                          </Button>
+                          app.documents_submitted_at ? (
+                            <Button variant="outline" size="sm" onClick={() => handleReview(app)}>
+                              <Eye className="mr-1.5 h-3.5 w-3.5" /> Review
+                            </Button>
+                          ) : (
+                            <Button variant="outline" size="sm" disabled className="opacity-50 cursor-not-allowed">
+                              <Clock className="mr-1.5 h-3.5 w-3.5" /> Awaiting Submission
+                            </Button>
+                          )
                         )}
                         {["verified", "contract_sent", "contract_signed", "active", "rejected"].includes(app.status) && (
                           <Button variant="outline" size="sm" onClick={() => handleViewInfo(app)}>

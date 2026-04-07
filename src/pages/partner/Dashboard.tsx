@@ -84,6 +84,9 @@ export default function PartnerDashboard() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setIsNewPartner(false); setLoading(false); return; }
 
+      // Auto-link application.user_id and contract.partner_user_id by email
+      await supabase.rpc("link_my_application");
+
       const { data: app } = await supabase
         .from("partner_applications")
         .select("*")

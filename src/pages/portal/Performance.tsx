@@ -6,10 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   TrendingUp, Upload, Download, Trash2, AlertCircle, CheckCircle,
   Loader2, Search, ChevronDown, ChevronUp, FileText, Info,
-  AlertTriangle, WifiOff, Activity,
+  AlertTriangle, WifiOff, Activity, RefreshCw, Wifi, FileSpreadsheet, Database,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -182,6 +183,7 @@ export default function AdminPerformance() {
   const [expandedBatch, setExpandedBatch] = useState<string | null>(null);
   const [searchTerm, setSearchTerm]       = useState("");
   const [flaggedOnly, setFlaggedOnly]     = useState(false);
+  const [importTab, setImportTab] = useState("csv");
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteBatchId, setDeleteBatchId] = useState<string | null>(null);
@@ -321,10 +323,14 @@ export default function AdminPerformance() {
 
   // ── Aggregate stats ────────────────────────────────────────────────────────
   const totalPartners    = new Set(rows.map(r => r.wolt_id).filter(Boolean)).size;
+  const totalDeliveries  = rows.reduce((s, r) => s + r.deliveries, 0);
   const totalFlagged     = rows.filter(r => isFlagged(r)).length;
   const avgTar           = rows.length ? rows.reduce((s, r) => s + r.tar_pct, 0) / rows.length : 0;
   const avgTcr           = rows.length ? rows.reduce((s, r) => s + r.tcr_pct, 0) / rows.length : 0;
   const setOfflineCount  = rows.filter(r => r.set_offline).length;
+
+  const PERF_CSV_HEADER = "Name;Phone;Email;Vehicle;Id;Team;Set offline;Weekly max hours;Deliveries;TAR;Tasks shown;TCR;DPH;DAT;Total online time;On-task time;Idle time;Travelled Distance (m);On-task distance (m)";
+  const PERF_CSV_SAMPLE = "Johan Andersson;+46701234567;johan@example.com;Bicycle;wlt_abc123;Stockholm;false;40;47;92 %;50;96 %;2,34;18m 30s;4h 15m;3h 42m;0h 33m;28.450;22.100";
 
   const getBatchRows = (batchId: string) =>
     rows.filter(r => r.import_batch_id === batchId && (
@@ -354,42 +360,52 @@ export default function AdminPerformance() {
         </div>
       </div>
 
+      {/* API Sync status (placeholder) */}
+      <Card className="border-dashed">
+        <CardContent className="p-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center">
+                <WifiOff className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <div>
+                <p className="font-medium">Wolt API Sync</p>
+                <p className="text-sm text-muted-foreground">Automatic performance sync not configured — Wolt API credentials required.</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-muted-foreground">Not connected</Badge>
+              <Button variant="outline" size="sm" disabled title="Requires Wolt API credentials">
+                <RefreshCw className="h-3.5 w-3.5 mr-1" /> Sync Now
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Stats cards */}
-      <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-7">
+        <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold">{rows.length}</p><p className="text-xs text-muted-foreground mt-1">Records</p></CardContent></Card>
+        <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold">{batches.length}</p><p className="text-xs text-muted-foreground mt-1">Batches</p></CardContent></Card>
+        <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold">{totalPartners}</p><p className="text-xs text-muted-foreground mt-1">Partners</p></CardContent></Card>
+        <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold">{totalDeliveries.toLocaleString("sv-SE")}</p><p className="text-xs text-muted-foreground mt-1">Deliveries</p></CardContent></Card>
         <Card>
-          <CardContent className="p-5 text-center">
-            <p className="text-3xl font-bold">{totalPartners}</p>
-            <p className="text-sm text-muted-foreground mt-1">Total Partners</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5 text-center">
-            <p className={`text-3xl font-bold ${avgTar < TAR_THRESHOLD ? "text-red-600" : avgTar < 90 ? "text-amber-600" : "text-green-600"}`}>
+          <CardContent className="p-4 text-center">
+            <p className={`text-2xl font-bold ${avgTar < TAR_THRESHOLD ? "text-red-600" : avgTar < 90 ? "text-amber-600" : "text-green-600"}`}>
               {rows.length ? avgTar.toFixed(1) : "—"}%
             </p>
-            <p className="text-sm text-muted-foreground mt-1">Avg TAR</p>
+            <p className="text-xs text-muted-foreground mt-1">Avg TAR</p>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-5 text-center">
-            <p className={`text-3xl font-bold ${avgTcr < TCR_THRESHOLD ? "text-red-600" : avgTcr < 95 ? "text-amber-600" : "text-green-600"}`}>
+          <CardContent className="p-4 text-center">
+            <p className={`text-2xl font-bold ${avgTcr < TCR_THRESHOLD ? "text-red-600" : avgTcr < 95 ? "text-amber-600" : "text-green-600"}`}>
               {rows.length ? avgTcr.toFixed(1) : "—"}%
             </p>
-            <p className="text-sm text-muted-foreground mt-1">Avg TCR</p>
+            <p className="text-xs text-muted-foreground mt-1">Avg TCR</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-5 text-center">
-            <p className="text-3xl font-bold text-red-600">{totalFlagged}</p>
-            <p className="text-sm text-muted-foreground mt-1">Flagged Partners</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5 text-center">
-            <p className="text-3xl font-bold text-orange-500">{setOfflineCount}</p>
-            <p className="text-sm text-muted-foreground mt-1">Set Offline</p>
-          </CardContent>
-        </Card>
+        <Card><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-red-600">{totalFlagged}</p><p className="text-xs text-muted-foreground mt-1">Flagged</p></CardContent></Card>
       </div>
 
       {/* Legend */}
@@ -578,71 +594,95 @@ export default function AdminPerformance() {
 
       {/* ── Import Dialog ─────────────────────────────────────────────────── */}
       <Dialog open={showImportDialog} onOpenChange={v => { setShowImportDialog(v); if (!v) { setParsePreview([]); setSelectedFile(null); setPeriodLabel(""); setParseErrors([]); } }}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-xl">
-              <Upload className="h-5 w-5 text-primary" /> Import Wolt Performance CSV
+              <Upload className="h-5 w-5 text-primary" /> Import Performance Data
             </DialogTitle>
             <DialogDescription>
-              Upload a semicolon-delimited performance export from Wolt's courier management system.
+              Upload a Wolt performance export or sync via API (when configured).
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
-            {/* Format info */}
-            <div className="flex items-start gap-3 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-sm">
-              <Info className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-medium text-blue-700 dark:text-blue-400">Expected format</p>
-                <p className="text-muted-foreground mt-0.5">
-                  Semicolon-delimited (;) with columns: Name, Phone, Email, Vehicle, Id, Team, Set offline, Weekly max hours, Deliveries, TAR, Tasks shown, TCR, DPH, DAT, Total online time, On-task time, Idle time, Travelled Distance (m), On-task distance (m)
-                </p>
-              </div>
-            </div>
+          <Tabs value={importTab} onValueChange={setImportTab}>
+            <TabsList className="grid grid-cols-3 w-full">
+              <TabsTrigger value="csv"><FileText className="h-3.5 w-3.5 mr-1.5" /> CSV Upload</TabsTrigger>
+              <TabsTrigger value="excel"><FileSpreadsheet className="h-3.5 w-3.5 mr-1.5" /> Excel Guide</TabsTrigger>
+              <TabsTrigger value="api" disabled><Wifi className="h-3.5 w-3.5 mr-1.5" /> API Sync</TabsTrigger>
+            </TabsList>
 
-            {/* Performance thresholds info */}
-            <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-sm">
-              <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-medium text-amber-700 dark:text-amber-400">Flagging thresholds</p>
-                <p className="text-muted-foreground mt-0.5">
-                  Partners are automatically flagged if: TAR &lt; {TAR_THRESHOLD}%, TCR &lt; {TCR_THRESHOLD}%, or they are set offline by Wolt.
-                </p>
-              </div>
-            </div>
-
-            {/* Period label */}
-            <div className="space-y-1.5">
-              <Label>Period label (optional)</Label>
-              <Input
-                placeholder="e.g. Week 14, 2026 or April 2026"
-                value={periodLabel}
-                onChange={e => setPeriodLabel(e.target.value)}
-              />
-            </div>
-
-            {/* File picker */}
-            <input ref={fileRef} type="file" accept=".csv,.txt" className="hidden" onChange={handleFileSelect} />
-            <div
-              className="border-2 border-dashed rounded-xl p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-all"
-              onClick={() => fileRef.current?.click()}
-            >
-              <FileText className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-              <p className="font-medium">{selectedFile ? selectedFile.name : "Click to select CSV file"}</p>
-              <p className="text-sm text-muted-foreground mt-1">Wolt performance export (.csv)</p>
-            </div>
-
-            {/* Parse errors */}
-            {parseErrors.length > 0 && (
-              <div className="space-y-2">
-                {parseErrors.map((e, i) => (
-                  <div key={i} className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm">
-                    <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
-                    <p>{e}</p>
+            <TabsContent value="csv" className="space-y-4 mt-4">
+              {/* Format reference table */}
+              <div className="rounded-xl border overflow-hidden">
+                <div className="flex items-center gap-2 px-4 py-2.5 bg-muted/50 border-b">
+                  <Info className="h-4 w-4 text-blue-500" />
+                  <span className="text-sm font-medium">Expected CSV format (semicolon-delimited)</span>
+                </div>
+                <div className="p-4 space-y-2 overflow-x-auto">
+                  <table className="text-xs font-mono w-full border-collapse">
+                    <thead>
+                      <tr>
+                        {PERF_CSV_HEADER.split(";").map((h, i) => (
+                          <th key={i} className="text-left px-2 py-1.5 bg-muted/80 border border-border whitespace-nowrap text-muted-foreground">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        {PERF_CSV_SAMPLE.split(";").map((v, i) => (
+                          <td key={i} className="px-2 py-1.5 border border-border whitespace-nowrap">{v}</td>
+                        ))}
+                      </tr>
+                    </tbody>
+                  </table>
+                  <div className="flex gap-4 text-xs text-muted-foreground pt-1">
+                    <span>TAR/TCR: <code className="bg-muted px-1 rounded">92 %</code></span>
+                    <span>Time: <code className="bg-muted px-1 rounded">1h 5m</code></span>
+                    <span>Offline: <code className="bg-muted px-1 rounded">true</code> / <code className="bg-muted px-1 rounded">false</code></span>
                   </div>
-                ))}
+                </div>
               </div>
-            )}
+
+              {/* Flagging thresholds */}
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-sm">
+                <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                <p className="text-muted-foreground">
+                  Partners are automatically flagged if: <strong>TAR &lt; {TAR_THRESHOLD}%</strong>, <strong>TCR &lt; {TCR_THRESHOLD}%</strong>, or set offline by Wolt.
+                </p>
+              </div>
+
+              {/* Period label */}
+              <div className="space-y-1.5">
+                <Label>Period label <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                <Input
+                  placeholder="e.g. Week 14, 2026 or April 2026"
+                  value={periodLabel}
+                  onChange={e => setPeriodLabel(e.target.value)}
+                />
+              </div>
+
+              {/* File picker */}
+              <input ref={fileRef} type="file" accept=".csv,.txt" className="hidden" onChange={handleFileSelect} />
+              <div
+                className="border-2 border-dashed rounded-xl p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-all"
+                onClick={() => fileRef.current?.click()}
+              >
+                <FileText className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                <p className="font-medium">{selectedFile ? selectedFile.name : "Click to select CSV file"}</p>
+                <p className="text-sm text-muted-foreground mt-1">Wolt performance export (.csv) · UTF-8 encoding</p>
+              </div>
+
+              {/* Parse errors */}
+              {parseErrors.length > 0 && (
+                <div className="space-y-2">
+                  {parseErrors.map((e, i) => (
+                    <div key={i} className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm">
+                      <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+                      <p>{e}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
 
             {/* Parse preview */}
             {parsePreview.length > 0 && (
@@ -692,7 +732,47 @@ export default function AdminPerformance() {
                 </div>
               </div>
             )}
-          </div>
+            </TabsContent>
+
+            <TabsContent value="excel" className="space-y-4 mt-4">
+              <div className="flex items-start gap-3 p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
+                <FileSpreadsheet className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
+                <div className="space-y-2 text-sm">
+                  <p className="font-medium text-blue-700 dark:text-blue-400">Converting a Wolt Excel performance export</p>
+                  <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                    <li>Open the .xlsx file in Microsoft Excel or Google Sheets</li>
+                    <li>Go to <strong>File → Save As → CSV (semicolon delimited)</strong></li>
+                    <li>Or in Google Sheets: <strong>File → Download → CSV (.csv)</strong> — then open and re-save with <code className="bg-muted px-1 rounded">;</code> as delimiter</li>
+                    <li>Upload the resulting .csv in the <strong>CSV Upload</strong> tab</li>
+                  </ol>
+                </div>
+              </div>
+              <div className="rounded-xl border overflow-hidden">
+                <div className="px-4 py-2.5 bg-muted/50 border-b text-sm font-medium">Expected column order</div>
+                <div className="p-4">
+                  <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
+                    {PERF_CSV_HEADER.split(";").map((col, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="h-5 w-5 rounded bg-primary/10 text-primary text-xs flex items-center justify-center font-mono shrink-0">{String.fromCharCode(65 + i)}</span>
+                        <span className="text-sm">{col}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="api" className="mt-4">
+              <div className="p-8 text-center rounded-xl bg-muted/30 border border-dashed">
+                <WifiOff className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                <h3 className="font-semibold mb-1">Wolt API not configured</h3>
+                <p className="text-sm text-muted-foreground">
+                  Automatic sync requires Wolt API credentials. Once configured, performance data will sync automatically.
+                </p>
+                {/* TODO: Add Wolt API credentials and implement handleApiSync() */}
+              </div>
+            </TabsContent>
+          </Tabs>
 
           <DialogFooter>
             <Button
@@ -701,13 +781,15 @@ export default function AdminPerformance() {
             >
               Cancel
             </Button>
-            <Button
-              onClick={handleImport}
-              disabled={parsePreview.length === 0 || importing}
-            >
-              {importing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Import {parsePreview.length > 0 ? `${parsePreview.length} Records` : ""}
-            </Button>
+            {importTab === "csv" && (
+              <Button
+                onClick={handleImport}
+                disabled={parsePreview.length === 0 || importing}
+              >
+                {importing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Import {parsePreview.length > 0 ? `${parsePreview.length} Records` : ""}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

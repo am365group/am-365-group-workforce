@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Upload, FileText, CheckCircle, Clock, AlertCircle, Eye, XCircle, Info, Download
+  Upload, FileText, CheckCircle, Clock, AlertCircle, Eye, XCircle, Info, Download, Send, Loader2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -33,6 +33,7 @@ export default function PartnerDocuments() {
   const [application, setApplication] = useState<any>(null);
   const [documents, setDocuments] = useState<DocRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState<Record<string, boolean>>({});
   const [selectedIdType, setSelectedIdType] = useState("passport");
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
@@ -51,9 +52,12 @@ export default function PartnerDocuments() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      // Auto-link application.user_id by email so RLS queries succeed
+      await supabase.rpc("link_my_application");
+
       const { data: app } = await supabase
         .from("partner_applications")
-        .select("id, reg_path")
+        .select("id, reg_path, status, documents_submitted_at")
         .eq("user_id", user.id)
         .maybeSingle();
 
@@ -180,6 +184,41 @@ export default function PartnerDocuments() {
       }
     } catch {
       toast({ title: "Preview failed", description: "Could not load document preview.", variant: "destructive" });
+    }
+  };
+
+  const handleSubmitDocuments = async () => {
+    if (!application) return;
+
+    // Validate all required slots are uploaded
+    const missing = requiredSlots.filter(s => !getDoc(s.key));
+    if (missing.length > 0) {
+      toast({
+        title: "Documents missing",
+        description: `Please upload: ${missing.map(s => s.label).join(", ")}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const { error } = await supabase
+        .from("partner_applications")
+        .update({ status: "under_review", documents_submitted_at: new Date().toISOString() })
+        .eq("id", application.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Documents submitted for review",
+        description: "AM:365 staff will review your documents. You'll be notified once verified.",
+      });
+      await loadData();
+    } catch (err: any) {
+      toast({ title: "Submission failed", description: err.message, variant: "destructive" });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -375,6 +414,36 @@ export default function PartnerDocuments() {
           );
         })}
       </div>
+
+      {/* Submit for Review — shown when all docs uploaded but not yet submitted */}
+      {application && !application.documents_submitted_at && totalUploaded === totalRequired && totalRequired > 0 && (
+        <div className="flex flex-col items-center gap-4 p-6 rounded-xl bg-primary/5 border border-primary/20">
+          <div className="text-center">
+            <h3 className="font-semibold text-lg">Ready to submit for review?</h3>
+            <p className="text-muted-foreground text-sm mt-1">
+              All required documents have been uploaded. Click below to submit your application for verification.
+            </p>
+          </div>
+          <Button size="lg" className="w-full md:w-auto px-10" onClick={handleSubmitDocuments} disabled={submitting}>
+            {submitting
+              ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting…</>
+              : <><Send className="mr-2 h-4 w-4" /> Submit Documents for Review</>}
+          </Button>
+        </div>
+      )}
+
+      {/* Submitted confirmation banner */}
+      {application?.documents_submitted_at && !["verified", "contract_sent", "contract_signed", "active"].includes(application.status) && (
+        <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
+          <Clock className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium text-amber-700 dark:text-amber-400">Documents submitted — under review</p>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Submitted on {new Date(application.documents_submitted_at).toLocaleDateString("sv-SE")}. Our team will verify your documents and notify you by email.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Document History — all uploads ever made */}
       {documents.length > 0 && (

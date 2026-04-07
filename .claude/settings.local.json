@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__77096964-a1d8-4920-a381-a52848187ce2__apply_migration",
+      "mcp__77096964-a1d8-4920-a381-a52848187ce2__list_tables",
+      "mcp__77096964-a1d8-4920-a381-a52848187ce2__generate_typescript_types",
+      "Bash(node -e \":*)",
+      "Bash(npm install:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(npx tsc:*)",
+      "Bash(node -e \"require\\(''./node_modules/@tiptap/react/package.json''\\); console.log\\(''tiptap ok''\\)\")",
+      "mcp__cae50e0a-a205-4ef3-9ac4-668a0e7eb0fa__list_deployments",
+      "Bash(npm run:*)",
+      "mcp__cae50e0a-a205-4ef3-9ac4-668a0e7eb0fa__list_teams",
+      "mcp__cae50e0a-a205-4ef3-9ac4-668a0e7eb0fa__list_projects",
+      "mcp__77096964-a1d8-4920-a381-a52848187ce2__get_logs",
+      "mcp__77096964-a1d8-4920-a381-a52848187ce2__list_projects",
+      "mcp__cae50e0a-a205-4ef3-9ac4-668a0e7eb0fa__deploy_to_vercel"
+    ]
+  }
+}

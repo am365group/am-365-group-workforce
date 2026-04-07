@@ -31,10 +31,12 @@ export default function PartnerContract() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      // Auto-link contract.partner_user_id by email so RLS query succeeds
+      await supabase.rpc("link_my_application");
+
       const { data, error } = await supabase
         .from("partner_contracts")
         .select("id, application_id, partner_user_id, contract_content, status, sent_at, signed_at")
-        .eq("partner_user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
