@@ -138,6 +138,7 @@ export default function AdminVerification() {
   const [rejectionCode, setRejectionCode] = useState("blurry_photo");
   const [docPreviewUrl, setDocPreviewUrl] = useState<string | null>(null);
   const [docPreviewIsPdf, setDocPreviewIsPdf] = useState(false);
+  const [showInfoDialog, setShowInfoDialog] = useState(false);
   const [verifyChecks, setVerifyChecks] = useState({
     id_verified: false,
     address_verified: false,
@@ -242,8 +243,9 @@ export default function AdminVerification() {
         });
       }
 
-      toast({ title: "Application approved", description: `${selectedApp.first_name} ${selectedApp.last_name} has been verified.` });
+      toast({ title: "Application approved ✓", description: `${selectedApp.first_name} ${selectedApp.last_name} verified — now in the Verified tab.` });
       setShowReviewDialog(false);
+      setActiveTab("verified");   // auto-switch to Verified tab
       loadApplications();
     } catch (err: any) {
       toast({ title: "Error approving application", description: err.message, variant: "destructive" });
@@ -330,6 +332,17 @@ export default function AdminVerification() {
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const handleViewInfo = async (app: Application) => {
+    setSelectedApp(app);
+    setDocPreviewUrl(null);
+    const { data: docs } = await supabase
+      .from("partner_documents")
+      .select("id, document_type, file_url, status, rejection_reason")
+      .eq("application_id", app.id);
+    setPartnerDocs(docs || []);
+    setShowInfoDialog(true);
   };
 
   const handleOpenContract = (app: Application) => {
@@ -535,11 +548,14 @@ export default function AdminVerification() {
                       </div>
                       <div className="flex items-center gap-2">
                         {["pending", "email_verified", "under_review"].includes(app.status) && (
-                          <>
-                            <Button variant="outline" size="sm" onClick={() => handleReview(app)}>
-                              <Eye className="mr-1.5 h-3.5 w-3.5" /> Review
-                            </Button>
-                          </>
+                          <Button variant="outline" size="sm" onClick={() => handleReview(app)}>
+                            <Eye className="mr-1.5 h-3.5 w-3.5" /> Review
+                          </Button>
+                        )}
+                        {["verified", "contract_sent", "contract_signed", "active", "rejected"].includes(app.status) && (
+                          <Button variant="outline" size="sm" onClick={() => handleViewInfo(app)}>
+                            <Eye className="mr-1.5 h-3.5 w-3.5" /> View
+                          </Button>
                         )}
                         {app.status === "verified" && (
                           <Button size="sm" onClick={() => handleOpenContract(app)}>
@@ -778,6 +794,118 @@ export default function AdminVerification() {
               {actionLoading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Send className="mr-1.5 h-3.5 w-3.5" />}
               Send Contract for Signing
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Read-only Info Dialog for verified/post-verified applications */}
+      <Dialog open={showInfoDialog} onOpenChange={setShowInfoDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Application Details</DialogTitle>
+            <DialogDescription>
+              {selectedApp && `${selectedApp.first_name} ${selectedApp.last_name} — ${selectedApp.email}`}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedApp && (
+            <div className="space-y-5">
+              {/* Status */}
+              <div className="flex items-center gap-3">
+                {getStatusBadge(selectedApp.status)}
+                <span className="text-sm text-muted-foreground">
+                  Application from {new Date(selectedApp.created_at).toLocaleDateString("sv-SE")}
+                </span>
+              </div>
+
+              {/* Personal Info */}
+              <div className="grid grid-cols-2 gap-4 p-4 rounded-xl bg-muted/50 border text-sm">
+                <div><p className="text-xs text-muted-foreground mb-1">Full Name</p><p className="font-medium">{selectedApp.first_name} {selectedApp.last_name}</p></div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Personal Number</p>
+                  <p className="font-medium font-mono text-muted-foreground tracking-widest">
+                    {selectedApp.personal_number?.replace(/^(\d{8})(.+)$/, "$1-****") ?? "—"}
+                  </p>
+                </div>
+                <div><p className="text-xs text-muted-foreground mb-1">Email</p><p className="font-medium">{selectedApp.email}</p></div>
+                <div><p className="text-xs text-muted-foreground mb-1">Phone</p><p className="font-medium">{selectedApp.phone}</p></div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Address</p>
+                  <p className="font-medium">{selectedApp.street_address}{selectedApp.apartment ? `, ${selectedApp.apartment}` : ""}</p>
+                  <p className="text-muted-foreground">{selectedApp.post_code} {selectedApp.city}</p>
+                </div>
+                <div><p className="text-xs text-muted-foreground mb-1">Transport</p><p className="font-medium">{getTransportIcon(selectedApp.transport)} {selectedApp.transport}</p></div>
+              </div>
+
+              {/* Verification checklist (read-only) */}
+              <div className="space-y-2">
+                <p className="font-semibold">Verification Results</p>
+                <div className="space-y-2 p-4 rounded-xl bg-muted/50 border">
+                  {[
+                    { key: "id_verified", label: "ID Document verified" },
+                    { key: "documents_verified", label: "All documents uploaded & legible" },
+                    { key: "address_verified", label: "Address confirmed" },
+                    { key: "bank_details_verified", label: "Bank details confirmed" },
+                  ].map(item => (
+                    <div key={item.key} className="flex items-center gap-3 text-sm">
+                      <CheckCircle className={`h-4 w-4 shrink-0 ${(selectedApp as any)[item.key] ? "text-primary" : "text-muted-foreground"}`} />
+                      <span className={(selectedApp as any)[item.key] ? "font-medium" : "text-muted-foreground"}>{item.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Documents */}
+              {partnerDocs.length > 0 && (
+                <div className="space-y-2">
+                  <p className="font-semibold">Submitted Documents</p>
+                  <div className="space-y-2">
+                    {partnerDocs.map(doc => (
+                      <div key={doc.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border">
+                        <div className="flex items-center gap-3">
+                          <FileText className="h-4 w-4 text-muted-foreground" />
+                          <div>
+                            <p className="text-sm font-medium capitalize">{doc.document_type.replace(/_/g, " ")}</p>
+                            <p className="text-xs text-muted-foreground capitalize">{doc.status}</p>
+                          </div>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => handleDocPreview(doc)}>
+                          <Eye className="h-3.5 w-3.5 mr-1" /> View
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Inline doc preview */}
+              {docPreviewUrl && (
+                <div className="rounded-xl border overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-2 bg-muted border-b">
+                    <span className="text-sm font-medium">Document Preview</span>
+                    <Button variant="ghost" size="sm" onClick={() => setDocPreviewUrl(null)}>
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                  {docPreviewIsPdf
+                    ? <iframe src={docPreviewUrl} className="w-full h-64" title="preview" />
+                    : <img src={docPreviewUrl} alt="Document" className="w-full max-h-64 object-contain bg-black/5" />
+                  }
+                </div>
+              )}
+
+              {/* Notes */}
+              {selectedApp.review_notes && (
+                <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-sm">
+                  <p className="font-semibold text-amber-700 dark:text-amber-400 mb-1">Review Notes</p>
+                  <p className="text-muted-foreground">{selectedApp.review_notes}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowInfoDialog(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

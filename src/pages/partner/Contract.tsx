@@ -1,155 +1,232 @@
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import { FileText, Download, Calendar, Building2, Clock, DollarSign, Shield, Heart, CheckCircle } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { FileText, CheckCircle, Clock, AlertCircle, Pen, Loader2, Calendar } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
-const contractDetails = [
-  { icon: Calendar, label: "Start Date", value: "January 15, 2024" },
-  { icon: Calendar, label: "End Date", value: "Ongoing (tillsvidare)" },
-  { icon: Building2, label: "Employer", value: "AM365 Group AB" },
-  { icon: FileText, label: "Type", value: "Employer of Record – Delivery Partner" },
-  { icon: DollarSign, label: "Hourly Rate", value: "180 SEK/hour" },
-  { icon: Clock, label: "Standard Hours", value: "40 hours/week" },
-];
-
-const benefits = [
-  { icon: DollarSign, title: "Overtime Compensation", description: "1.5x rate after 40 hours per week, 2x on public holidays" },
-  { icon: Heart, title: "Health Insurance", description: "Full coverage via AM365 collective agreement (Fora)" },
-  { icon: Shield, title: "Pension (Tjänstepension)", description: "4.5% employer contribution via Avtalat ITP" },
-  { icon: Calendar, title: "Paid Vacation", description: "25 days per year, vacation pay 12% of gross salary" },
-  { icon: FileText, title: "Sick Leave", description: "Day 1: karensdag, Day 2-14: 80% sick pay from AM365" },
-  { icon: Building2, title: "Workers' Compensation", description: "Full coverage for work-related injuries and accidents" },
-];
-
-const contractHistory = [
-  { version: "v2.0", date: "Jan 15, 2024", change: "Transferred to EoR agreement — rate updated to 180 SEK/h", status: "Current" },
-  { version: "v1.0", date: "Oct 1, 2023", change: "Initial partner onboarding agreement", status: "Superseded" },
-];
+type ContractData = {
+  id: string;
+  application_id: string;
+  partner_user_id: string | null;
+  contract_content: string | null;
+  status: string;
+  sent_at: string | null;
+  signed_at: string | null;
+};
 
 export default function PartnerContract() {
+  const [contract, setContract] = useState<ContractData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [signing, setSigning] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => { loadContract(); }, []);
+
+  const loadContract = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from("partner_contracts")
+        .select("id, application_id, partner_user_id, contract_content, status, sent_at, signed_at")
+        .eq("partner_user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      setContract(data);
+    } catch (err: any) {
+      toast({ title: "Error loading contract", description: err.message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSign = async () => {
+    if (!contract) return;
+    setSigning(true);
+    try {
+      // 1. Mark contract as signed
+      const { error: contractError } = await supabase
+        .from("partner_contracts")
+        .update({ status: "signed", signed_at: new Date().toISOString() })
+        .eq("id", contract.id);
+
+      if (contractError) throw contractError;
+
+      // 2. Update application status
+      const { error: appError } = await supabase
+        .from("partner_applications")
+        .update({ status: "contract_signed" })
+        .eq("id", contract.application_id);
+
+      if (appError) throw appError;
+
+      toast({
+        title: "Contract signed! 🎉",
+        description: "Your employment contract has been accepted. AM:365 will activate your account shortly.",
+      });
+      setShowConfirm(false);
+      await loadContract();
+    } catch (err: any) {
+      toast({ title: "Error signing contract", description: err.message, variant: "destructive" });
+    } finally {
+      setSigning(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  // No contract yet
+  if (!contract) {
+    return (
+      <div className="space-y-8 animate-fade-in max-w-3xl">
+        <div>
+          <h1 className="text-3xl font-bold">My Contract</h1>
+          <p className="text-base text-muted-foreground mt-1">Your employment agreement with AM:365 Group AB</p>
+        </div>
+        <Card>
+          <CardContent className="p-12 text-center">
+            <Clock className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h2 className="text-xl font-semibold mb-2">Contract not ready yet</h2>
+            <p className="text-muted-foreground">
+              Your contract will appear here once your identity documents have been verified and
+              an employment contract has been prepared by the AM:365 team.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const isPending = contract.status === "sent";
+  const isSigned = contract.status === "signed";
+
   return (
     <div className="space-y-8 animate-fade-in max-w-3xl">
       <div>
         <h1 className="text-3xl font-bold">My Contract</h1>
-        <p className="text-base text-muted-foreground mt-1">Your current employment agreement with AM365 Group AB</p>
+        <p className="text-base text-muted-foreground mt-1">Your employment agreement with AM:365 Group AB</p>
       </div>
 
-      {/* Contract Header */}
+      {/* Status Banner */}
+      {isPending && (
+        <div className="flex items-start gap-4 p-5 rounded-xl bg-amber-500/10 border border-amber-500/30">
+          <AlertCircle className="h-6 w-6 text-amber-500 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="font-semibold text-amber-700 dark:text-amber-400">Action required — Please review and sign</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Read your employment contract carefully below. When you're ready, click <strong>Sign Contract</strong> to accept.
+            </p>
+          </div>
+          <Button onClick={() => setShowConfirm(true)} className="shrink-0">
+            <Pen className="mr-1.5 h-4 w-4" /> Sign Contract
+          </Button>
+        </div>
+      )}
+
+      {isSigned && (
+        <div className="flex items-start gap-4 p-5 rounded-xl bg-primary/10 border border-primary/30">
+          <CheckCircle className="h-6 w-6 text-primary shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold text-primary">Contract signed</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Signed on {contract.signed_at ? new Date(contract.signed_at).toLocaleDateString("sv-SE", { year: "numeric", month: "long", day: "numeric" }) : "—"}.
+              Your account is being activated by the AM:365 team.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Contract Header Card */}
       <Card className="border-primary/20">
         <CardContent className="p-6">
-          <div className="flex items-start justify-between">
+          <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-4">
               <div className="h-14 w-14 rounded-xl bg-primary/10 flex items-center justify-center">
                 <FileText className="h-7 w-7 text-primary" />
               </div>
               <div>
-                <h2 className="text-xl font-bold">Partner Employment Agreement</h2>
-                <p className="text-muted-foreground">Contract #AM365-2024-0142 · Version 2.0</p>
-                <p className="text-sm text-muted-foreground mt-1">Signed digitally via BankID on January 15, 2024</p>
-              </div>
-            </div>
-            <Badge className="text-sm px-3 py-1">Active</Badge>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Contract Details */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-xl">Contract Details</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-4">
-            {contractDetails.map((detail) => (
-              <div key={detail.label} className="p-4 rounded-xl bg-muted/50 border">
-                <p className="text-sm text-muted-foreground flex items-center gap-1.5 mb-1">
-                  <detail.icon className="h-3.5 w-3.5" /> {detail.label}
+                <h2 className="text-xl font-bold">Employment Contract — AM:365 Group AB</h2>
+                <p className="text-muted-foreground text-sm mt-1">
+                  Sent {contract.sent_at ? new Date(contract.sent_at).toLocaleDateString("sv-SE") : "—"}
                 </p>
-                <p className="font-semibold">{detail.value}</p>
               </div>
-            ))}
+            </div>
+            <Badge variant={isSigned ? "default" : "secondary"} className="shrink-0 text-sm px-3 py-1">
+              {isSigned ? "Signed" : isPending ? "Awaiting Signature" : contract.status}
+            </Badge>
           </div>
         </CardContent>
       </Card>
 
-      {/* Benefits & Compensation */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-xl flex items-center gap-2"><Heart className="h-5 w-5 text-primary" /> Benefits & Compensation</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {benefits.map((benefit, i) => (
-              <div key={i} className="flex items-start gap-4 p-4 rounded-xl bg-muted/30 border">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <benefit.icon className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <p className="font-semibold">{benefit.title}</p>
-                  <p className="text-sm text-muted-foreground mt-0.5">{benefit.description}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      {/* Contract Content */}
+      {contract.contract_content && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-xl flex items-center gap-2">
+              <FileText className="h-5 w-5 text-primary" /> Contract Terms
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div
+              className="prose prose-sm dark:prose-invert max-w-none border rounded-xl p-6 bg-muted/20"
+              dangerouslySetInnerHTML={{ __html: contract.contract_content }}
+            />
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Key Terms */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-xl">Key Terms & Conditions</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3 text-sm">
-            <div className="flex items-start gap-2.5">
-              <CheckCircle className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-              <p><span className="font-medium">Notice Period:</span> 1 month from either party. During probation (6 months): 2 weeks.</p>
-            </div>
-            <div className="flex items-start gap-2.5">
-              <CheckCircle className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-              <p><span className="font-medium">Working Hours:</span> Flexible scheduling via the platform. Max 48h/week average over 4 weeks.</p>
-            </div>
-            <div className="flex items-start gap-2.5">
-              <CheckCircle className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-              <p><span className="font-medium">Collective Agreement:</span> This contract follows the Swedish collective agreement for transport workers.</p>
-            </div>
-            <div className="flex items-start gap-2.5">
-              <CheckCircle className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-              <p><span className="font-medium">GDPR Compliance:</span> Personal data is processed in accordance with EU GDPR regulations.</p>
-            </div>
-            <div className="flex items-start gap-2.5">
-              <CheckCircle className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-              <p><span className="font-medium">Governing Law:</span> Swedish law applies. Disputes handled by Arbetsdomstolen (Labour Court).</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Sign Button (bottom) */}
+      {isPending && (
+        <Button size="lg" className="w-full h-14 text-base" onClick={() => setShowConfirm(true)}>
+          <Pen className="mr-2 h-5 w-5" /> Sign & Accept Contract
+        </Button>
+      )}
 
-      {/* Contract History */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-xl">Contract History</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {contractHistory.map((version) => (
-              <div key={version.version} className="flex items-center justify-between p-4 rounded-xl border">
-                <div className="flex items-center gap-4">
-                  <Badge variant={version.status === "Current" ? "default" : "secondary"}>{version.version}</Badge>
-                  <div>
-                    <p className="font-medium text-sm">{version.change}</p>
-                    <p className="text-sm text-muted-foreground">{version.date}</p>
-                  </div>
-                </div>
-                <Button variant="outline" size="sm"><Download className="mr-1.5 h-3.5 w-3.5" /> Download</Button>
-              </div>
-            ))}
+      {/* Confirmation Dialog */}
+      <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl">Confirm Digital Signature</DialogTitle>
+            <DialogDescription>
+              By clicking <strong>Sign Contract</strong> below, you confirm that you have read and
+              agree to all terms of the employment contract with AM:365 Group AB. This acts as your
+              legally binding digital signature.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2 space-y-3">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border text-sm">
+              <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span>Signature date: <strong>{new Date().toLocaleDateString("sv-SE")}</strong></span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              A copy of your signed contract will be accessible from this page at any time.
+            </p>
           </div>
-        </CardContent>
-      </Card>
-
-      <Button variant="outline" className="w-full h-12" size="lg"><Download className="mr-2 h-5 w-5" /> Download Current Contract (PDF)</Button>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowConfirm(false)} disabled={signing}>
+              Review again
+            </Button>
+            <Button onClick={handleSign} disabled={signing}>
+              {signing ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-1.5 h-4 w-4" />}
+              Sign Contract
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

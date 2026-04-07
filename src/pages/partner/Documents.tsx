@@ -328,6 +328,47 @@ export default function PartnerDocuments() {
         })}
       </div>
 
+      {/* Document History — all uploads ever made */}
+      {documents.length > 0 && (
+        <div className="space-y-4">
+          <h2 className="text-xl font-semibold">Upload History</h2>
+          <Card>
+            <CardContent className="p-0 divide-y">
+              {documents.map(doc => {
+                const statusConfig: Record<string, { label: string; color: string }> = {
+                  uploaded: { label: "Under Review", color: "text-amber-500" },
+                  verified: { label: "Verified",     color: "text-primary" },
+                  rejected: { label: "Rejected",     color: "text-destructive" },
+                };
+                const cfg = statusConfig[doc.status] ?? { label: doc.status, color: "text-muted-foreground" };
+                return (
+                  <div key={doc.id} className="flex items-center justify-between px-5 py-4">
+                    <div className="flex items-center gap-4">
+                      <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
+                      <div>
+                        <p className="font-medium capitalize text-sm">{doc.document_type.replace(/_/g, " ")}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Uploaded {new Date(doc.created_at).toLocaleDateString("sv-SE")}
+                        </p>
+                        {doc.rejection_reason && (
+                          <p className="text-xs text-destructive mt-0.5">Reason: {doc.rejection_reason}</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className={`text-xs font-medium ${cfg.color}`}>{cfg.label}</span>
+                      <Button variant="outline" size="sm" onClick={() => handlePreview(doc)}>
+                        <Eye className="h-3.5 w-3.5 mr-1" /> View
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Preview overlay */}
       {previewUrl && (
         <div
