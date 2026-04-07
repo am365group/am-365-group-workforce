@@ -40,6 +40,7 @@ import AdminUsers from "./pages/portal/Users";
 import AdminMessages from "./pages/portal/Messages";
 import AdminCompliance from "./pages/portal/Compliance";
 import AdminPerformance from "./pages/portal/Performance";
+import AdminProfile from "./pages/portal/AdminProfile";
 
 const queryClient = new QueryClient();
 
@@ -86,6 +87,7 @@ const App = () => (
             <Route path="messages" element={<AdminMessages />} />
             <Route path="compliance" element={<AdminCompliance />} />
             <Route path="performance" element={<AdminPerformance />} />
+            <Route path="profile" element={<AdminProfile />} />
           </Route>
 
           <Route path="*" element={<NotFound />} />

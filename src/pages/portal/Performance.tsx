@@ -35,8 +35,8 @@ type PerfRow = {
   dph: number;
   dat_minutes: number;
   total_online_minutes: number;
-  on_task_minutes: number;
-  idle_minutes: number;
+  total_on_task_minutes: number;
+  total_idle_minutes: number;
   travelled_distance_m: number;
   on_task_distance_m: number;
 };
@@ -123,8 +123,8 @@ function parseWoltPerformanceCsv(text: string): Omit<PerfRow, "id" | "import_bat
       dph:                   parseDecimal(c[12] ?? ""),
       dat_minutes:           parseTimeToMinutes(c[13] ?? ""),
       total_online_minutes:  parseTimeToMinutes(c[14] ?? ""),
-      on_task_minutes:       parseTimeToMinutes(c[15] ?? ""),
-      idle_minutes:          parseTimeToMinutes(c[16] ?? ""),
+      total_on_task_minutes: parseTimeToMinutes(c[15] ?? ""),
+      total_idle_minutes:    parseTimeToMinutes(c[16] ?? ""),
       travelled_distance_m:  parseSwedishInt(c[17] ?? ""),
       on_task_distance_m:    parseSwedishInt(c[18] ?? ""),
     });
@@ -144,7 +144,7 @@ function exportToCsv(rows: PerfRow[], filename: string) {
     r.partner_name, r.phone ?? "", r.email ?? "", r.vehicle ?? "", r.wolt_id ?? "",
     r.team ?? "", r.set_offline, r.weekly_max_hours ?? "", r.deliveries,
     r.tar_pct, r.tasks_shown, r.tcr_pct, r.dph, r.dat_minutes,
-    r.total_online_minutes, r.on_task_minutes, r.idle_minutes,
+    r.total_online_minutes, r.total_on_task_minutes, r.total_idle_minutes,
     r.travelled_distance_m, r.on_task_distance_m,
     r.period_label ?? "", r.imported_at,
   ].join(";"));
@@ -558,8 +558,8 @@ export default function AdminPerformance() {
                                   <TableCell className="text-right text-sm">{r.dph.toFixed(2)}</TableCell>
                                   <TableCell className="text-right text-sm text-muted-foreground">{fmtMinutes(r.dat_minutes)}</TableCell>
                                   <TableCell className="text-right text-sm">{fmtMinutes(r.total_online_minutes)}</TableCell>
-                                  <TableCell className="text-right text-sm">{fmtMinutes(r.on_task_minutes)}</TableCell>
-                                  <TableCell className="text-right text-sm text-muted-foreground">{fmtMinutes(r.idle_minutes)}</TableCell>
+                                  <TableCell className="text-right text-sm">{fmtMinutes(r.total_on_task_minutes)}</TableCell>
+                                  <TableCell className="text-right text-sm text-muted-foreground">{fmtMinutes(r.total_idle_minutes)}</TableCell>
                                   <TableCell className="text-right text-sm">{fmtDistanceKm(r.travelled_distance_m)}</TableCell>
                                 </TableRow>
                               );

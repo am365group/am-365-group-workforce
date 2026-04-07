@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Users, ShieldCheck, Calendar, Building2, Truck,
   DollarSign, FileText, Receipt, BarChart3, Settings, ScrollText,
-  UserCog, MessageSquare, Shield, LogOut, TrendingUp,
+  UserCog, MessageSquare, Shield, LogOut, TrendingUp, UserCircle,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -34,6 +34,7 @@ const systemItems = [
   { title: "Users", url: "/portal/users", icon: UserCog },
   { title: "Messages", url: "/portal/messages", icon: MessageSquare },
   { title: "Compliance", url: "/portal/compliance", icon: Shield },
+  { title: "My Profile", url: "/portal/profile", icon: UserCircle },
 ];
 
 export function AdminSidebar() {

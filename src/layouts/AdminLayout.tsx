@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
-import { Bell, LogOut, Search, ChevronDown } from "lucide-react";
+import { Bell, LogOut, Search, ChevronDown, UserCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -90,9 +90,14 @@ export default function AdminLayout() {
                     <ChevronDown className="h-3.5 w-3.5 text-muted-foreground hidden md:block" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuContent align="end" className="w-52">
                   <div className="px-3 py-2 text-xs text-muted-foreground font-medium">Signed in as</div>
                   <div className="px-3 pb-2 text-sm font-medium truncate">{adminName}</div>
+                  <div className="px-3 pb-2 text-xs text-muted-foreground">{adminRole}</div>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => navigate("/portal/profile")} className="cursor-pointer">
+                    <UserCircle className="mr-2 h-4 w-4" /> My Profile
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleSignOut} className="text-destructive focus:text-destructive cursor-pointer">
                     <LogOut className="mr-2 h-4 w-4" /> Sign Out
