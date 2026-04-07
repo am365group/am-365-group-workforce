@@ -28,6 +28,7 @@ type DocRecord = {
 };
 
 export default function PartnerDocuments() {
+  const [userId, setUserId] = useState<string | null>(null);
   const [application, setApplication] = useState<any>(null);
   const [documents, setDocuments] = useState<DocRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,6 +55,7 @@ export default function PartnerDocuments() {
         .eq("user_id", user.id)
         .maybeSingle();
 
+      setUserId(user.id);
       if (app) {
         setApplication(app);
         const { data: docs } = await supabase
@@ -99,7 +101,7 @@ export default function PartnerDocuments() {
   };
 
   const handleUpload = async (slotKey: string, file: File) => {
-    if (!application) return;
+    if (!application || !userId) return;
 
     if (file.size > 50 * 1024 * 1024) {
       toast({ title: "File too large", description: "Maximum file size is 50 MB.", variant: "destructive" });
@@ -115,7 +117,8 @@ export default function PartnerDocuments() {
 
     try {
       const ext = file.name.split(".").pop() ?? "bin";
-      const filePath = `${application.id}/${docType}_${Date.now()}.${ext}`;
+      // Storage RLS: path must start with auth.uid() (userId), not application.id
+      const filePath = `${userId}/${docType}_${Date.now()}.${ext}`;
 
       const { error: uploadError } = await supabase.storage
         .from("partner-documents")
@@ -137,13 +140,6 @@ export default function PartnerDocuments() {
           status: "uploaded",
         });
       }
-
-      // Notify admin verifiers
-      await supabase.from("notifications").insert({
-        title: "New document uploaded",
-        message: `Partner uploaded ${docType.replace(/_/g, " ")} — awaiting review`,
-        type: "info",
-      });
 
       toast({ title: "Document uploaded", description: "Your document has been submitted for review." });
       await loadData();

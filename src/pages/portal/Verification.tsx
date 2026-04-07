@@ -8,12 +8,15 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   ShieldCheck, CheckCircle, XCircle, Eye, Clock, FileText, User,
   Send, AlertTriangle, Loader2, Search,
   Mail, MapPin, Phone, Download, ZoomIn, RotateCw, X
 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ContractEditor } from "@/components/ContractEditor";
+import { contractTemplates } from "@/lib/contractTemplates";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -127,6 +130,7 @@ export default function AdminVerification() {
   const [showContractDialog, setShowContractDialog] = useState(false);
   const [reviewNotes, setReviewNotes] = useState("");
   const [contractContent, setContractContent] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState("standard_eor");
   const [actionLoading, setActionLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState("pending");
@@ -134,6 +138,12 @@ export default function AdminVerification() {
   const [rejectionCode, setRejectionCode] = useState("blurry_photo");
   const [docPreviewUrl, setDocPreviewUrl] = useState<string | null>(null);
   const [docPreviewIsPdf, setDocPreviewIsPdf] = useState(false);
+  const [verifyChecks, setVerifyChecks] = useState({
+    id_verified: false,
+    address_verified: false,
+    bank_details_verified: false,
+    documents_verified: false,
+  });
   const { toast } = useToast();
 
   useEffect(() => {
@@ -171,6 +181,12 @@ export default function AdminVerification() {
     setReviewNotes(app.review_notes || "");
     setRejectionCode("blurry_photo");
     setDocPreviewUrl(null);
+    setVerifyChecks({
+      id_verified: app.id_verified ?? false,
+      address_verified: app.address_verified ?? false,
+      bank_details_verified: app.bank_details_verified ?? false,
+      documents_verified: app.documents_verified ?? false,
+    });
     setShowReviewDialog(true);
 
     // Load submitted documents for this application
@@ -197,7 +213,14 @@ export default function AdminVerification() {
     try {
       await supabase
         .from("partner_applications")
-        .update({ status: "verified", id_verified: true, documents_verified: true, address_verified: true, review_notes: reviewNotes })
+        .update({
+          status: "verified",
+          id_verified: verifyChecks.id_verified,
+          documents_verified: verifyChecks.documents_verified,
+          address_verified: verifyChecks.address_verified,
+          bank_details_verified: verifyChecks.bank_details_verified,
+          review_notes: reviewNotes,
+        })
         .eq("id", selectedApp.id);
 
       // Send verification done email
@@ -311,8 +334,17 @@ export default function AdminVerification() {
 
   const handleOpenContract = (app: Application) => {
     setSelectedApp(app);
-    setContractContent(defaultContractTemplate(app));
+    const template = contractTemplates.find(t => t.id === selectedTemplateId) ?? contractTemplates[0];
+    setContractContent(template.generate(app));
     setShowContractDialog(true);
+  };
+
+  const handleTemplateChange = (templateId: string) => {
+    setSelectedTemplateId(templateId);
+    if (selectedApp) {
+      const template = contractTemplates.find(t => t.id === templateId) ?? contractTemplates[0];
+      setContractContent(template.generate(selectedApp));
+    }
   };
 
   const handleSendContract = async () => {
@@ -622,19 +654,31 @@ export default function AdminVerification() {
                 </div>
               )}
 
-              {/* Verification Checklist */}
+              {/* Verification Checklist — interactive */}
               <div className="space-y-2">
                 <p className="font-semibold text-base">Verification Checklist</p>
-                <div className="space-y-1.5">
-                  {[
-                    { label: "ID Document Verified", checked: selectedApp.id_verified },
-                    { label: "Address Verified", checked: selectedApp.address_verified },
-                    { label: "Bank Details Verified", checked: selectedApp.bank_details_verified },
-                    { label: "Documents Verified", checked: selectedApp.documents_verified },
-                  ].map((item, i) => (
-                    <div key={i} className="flex items-center gap-2 text-sm">
-                      <CheckCircle className={`h-4 w-4 ${item.checked ? "text-primary" : "text-muted-foreground/30"}`} />
-                      <span className={item.checked ? "" : "text-muted-foreground"}>{item.label}</span>
+                <div className="space-y-3 p-4 rounded-xl bg-muted/50 border">
+                  {([
+                    { key: "id_verified" as const, label: "ID Document verified against application data" },
+                    { key: "documents_verified" as const, label: "All required documents uploaded and legible" },
+                    { key: "address_verified" as const, label: "Address confirmed" },
+                    { key: "bank_details_verified" as const, label: "Bank details confirmed" },
+                  ]).map((item) => (
+                    <div key={item.key} className="flex items-center gap-3">
+                      <Checkbox
+                        id={item.key}
+                        checked={verifyChecks[item.key]}
+                        onCheckedChange={(checked) =>
+                          setVerifyChecks(prev => ({ ...prev, [item.key]: !!checked }))
+                        }
+                        className="h-5 w-5"
+                      />
+                      <label
+                        htmlFor={item.key}
+                        className={`text-sm cursor-pointer select-none ${verifyChecks[item.key] ? "text-foreground font-medium" : "text-muted-foreground"}`}
+                      >
+                        {item.label}
+                      </label>
                     </div>
                   ))}
                 </div>
@@ -697,14 +741,34 @@ export default function AdminVerification() {
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border">
-              <span className="text-sm text-muted-foreground">Auto-generated from application data. Edit as needed before sending.</span>
-              <Badge variant="outline">Draft</Badge>
+            {/* Template selector */}
+            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center p-4 rounded-xl bg-muted/50 border">
+              <div className="flex-1 space-y-1">
+                <Label className="text-sm">Contract Template</Label>
+                <Select value={selectedTemplateId} onValueChange={handleTemplateChange}>
+                  <SelectTrigger className="w-full sm:w-80">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {contractTemplates.map(t => (
+                      <SelectItem key={t.id} value={t.id}>
+                        <div>
+                          <p className="font-medium">{t.name}</p>
+                          <p className="text-xs text-muted-foreground">{t.description}</p>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Badge variant="outline" className="shrink-0">Draft — edit before sending</Badge>
             </div>
-            <Textarea
-              value={contractContent}
-              onChange={(e) => setContractContent(e.target.value)}
-              className="min-h-[400px] font-mono text-sm leading-relaxed"
+
+            {/* Tiptap rich-text editor */}
+            <ContractEditor
+              content={contractContent}
+              onChange={setContractContent}
+              editable={true}
             />
           </div>
 
