@@ -113,6 +113,54 @@ export type Database = {
         }
         Relationships: []
       }
+      customer_partner_links: {
+        Row: {
+          id: string
+          customer_id: string
+          partner_application_id: string
+          external_employee_id: string | null
+          am365_employee_id: string | null
+          is_active: boolean | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          customer_id: string
+          partner_application_id: string
+          external_employee_id?: string | null
+          am365_employee_id?: string | null
+          is_active?: boolean | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          customer_id?: string
+          partner_application_id?: string
+          external_employee_id?: string | null
+          am365_employee_id?: string | null
+          is_active?: boolean | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_partner_links_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_partner_links_partner_application_id_fkey"
+            columns: ["partner_application_id"]
+            isOneToOne: false
+            referencedRelation: "partner_applications"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       gdpr_requests: {
         Row: {
           created_at: string

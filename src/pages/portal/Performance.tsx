@@ -7,10 +7,12 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   TrendingUp, Upload, Download, Trash2, AlertCircle, CheckCircle,
   Loader2, Search, ChevronDown, ChevronUp, FileText, Info,
   AlertTriangle, WifiOff, Activity, RefreshCw, Wifi, FileSpreadsheet, Database,
+  Building2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -193,18 +195,31 @@ export default function AdminPerformance() {
   const [parseErrors, setParseErrors]     = useState<string[]>([]);
   const [periodLabel, setPeriodLabel]     = useState("");
   const [selectedFile, setSelectedFile]   = useState<File | null>(null);
+  const [customers, setCustomers] = useState<{id: string; name: string}[]>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>("all");
   const fileRef = useRef<HTMLInputElement | null>(null);
   const { toast } = useToast();
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [selectedCustomerId]);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data: custData } = await supabase
+        .from("customers")
+        .select("id, name")
+        .eq("is_active", true)
+        .order("name");
+      setCustomers((custData as any[]) || []);
+
+      let query = supabase
         .from("wolt_performance_imports")
         .select("*")
         .order("imported_at", { ascending: false });
+      if (selectedCustomerId !== "all") {
+        query = query.eq("customer_id", selectedCustomerId);
+      }
+      const { data, error } = await query;
       if (error) throw error;
       const all = (data as PerfRow[]) || [];
       setRows(all);
@@ -278,6 +293,7 @@ export default function AdminPerformance() {
         import_batch_id: batchId,
         period_label: periodLabel || null,
         imported_by: user?.id ?? null,
+        customer_id: selectedCustomerId !== "all" ? selectedCustomerId : null,
       }));
       const { error } = await supabase.from("wolt_performance_imports").insert(toInsert);
       if (error) throw error;
@@ -358,6 +374,22 @@ export default function AdminPerformance() {
             <Upload className="mr-2 h-4 w-4" /> Import CSV
           </Button>
         </div>
+      </div>
+
+      {/* Customer filter */}
+      <div className="flex items-center gap-3">
+        <Building2 className="h-4 w-4 text-muted-foreground" />
+        <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
+          <SelectTrigger className="w-56 h-10">
+            <SelectValue placeholder="All Customers" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Customers</SelectItem>
+            {customers.map(c => (
+              <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* API Sync status (placeholder) */}
