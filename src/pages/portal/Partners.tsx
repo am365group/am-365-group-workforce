@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Search, UserPlus, Users, Eye, Mail, MapPin, Phone,
-  Loader2, Trash2, AlertTriangle, ChevronRight
+  Loader2, Trash2, AlertTriangle, ChevronDown, ChevronRight,
+  RotateCcw, DatabaseZap, ShieldAlert
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -39,6 +40,7 @@ const STATUS_COLORS: Record<string, string> = {
   email_verified:  "bg-blue-100 text-blue-800 border-blue-200",
   pending:         "bg-amber-100 text-amber-800 border-amber-200",
   rejected:        "bg-red-100 text-red-800 border-red-200",
+  deactivated:     "bg-gray-100 text-gray-500 border-gray-200",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -50,6 +52,7 @@ const STATUS_LABELS: Record<string, string> = {
   email_verified:  "Email Verified",
   pending:         "Pending",
   rejected:        "Rejected",
+  deactivated:     "Deactivated",
 };
 
 const TRANSPORT_ICON: Record<string, string> = {
@@ -59,26 +62,37 @@ const TRANSPORT_ICON: Record<string, string> = {
 };
 
 export default function AdminPartners() {
-  const [partners, setPartners]       = useState<Partner[]>([]);
-  const [loading, setLoading]         = useState(true);
-  const [searchTerm, setSearchTerm]   = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [partners, setPartners]           = useState<Partner[]>([]);
+  const [loading, setLoading]             = useState(true);
+  const [searchTerm, setSearchTerm]       = useState("");
+  const [statusFilter, setStatusFilter]   = useState("all");
+  const [showDeactivated, setShowDeactivated] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
   // Add partner dialog
-  const [showAdd, setShowAdd]         = useState(false);
-  const [addLoading, setAddLoading]   = useState(false);
-  const [addForm, setAddForm]         = useState({
+  const [showAdd, setShowAdd]             = useState(false);
+  const [addLoading, setAddLoading]       = useState(false);
+  const [addForm, setAddForm]             = useState({
     first_name: "", last_name: "", email: "", phone: "",
     city: "", transport: "bicycle", reg_path: "wolt",
   });
 
-  // Delete dialog
-  const [showDelete, setShowDelete]   = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<Partner | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState("");
-  const [deleteLoading, setDeleteLoading] = useState(false);
+  // Deactivate dialog
+  const [showDeactivate, setShowDeactivate]   = useState(false);
+  const [deactivateTarget, setDeactivateTarget] = useState<Partner | null>(null);
+  const [deactivateConfirm, setDeactivateConfirm] = useState("");
+  const [deactivateLoading, setDeactivateLoading] = useState(false);
+
+  // Reactivate dialog
+  const [showReactivate, setShowReactivate]   = useState(false);
+  const [reactivateTarget, setReactivateTarget] = useState<Partner | null>(null);
+  const [reactivateLoading, setReactivateLoading] = useState(false);
+
+  // Clean database dialog
+  const [showClean, setShowClean]         = useState(false);
+  const [cleanConfirm, setCleanConfirm]   = useState("");
+  const [cleanLoading, setCleanLoading]   = useState(false);
 
   useEffect(() => { loadPartners(); }, []);
 
@@ -106,15 +120,15 @@ export default function AdminPartners() {
     setAddLoading(true);
     try {
       const { error } = await supabase.from("partner_applications").insert({
-        first_name:     addForm.first_name.trim(),
-        last_name:      addForm.last_name.trim(),
-        email:          addForm.email.trim().toLowerCase(),
-        phone:          addForm.phone.trim() || null,
-        city:           addForm.city.trim() || null,
-        transport:      addForm.transport,
-        reg_path:       addForm.reg_path,
-        status:         "pending",
-        personal_number: "000000-0000",  // placeholder for admin-created entries
+        first_name:      addForm.first_name.trim(),
+        last_name:       addForm.last_name.trim(),
+        email:           addForm.email.trim().toLowerCase(),
+        phone:           addForm.phone.trim() || null,
+        city:            addForm.city.trim() || null,
+        transport:       addForm.transport,
+        reg_path:        addForm.reg_path,
+        status:          "pending",
+        personal_number: "000000-0000",
         street_address:  "—",
         post_code:       "000 00",
       });
@@ -130,35 +144,81 @@ export default function AdminPartners() {
     }
   };
 
-  const handleDeleteConfirm = async () => {
-    if (!deleteTarget) return;
-    const fullName = `${deleteTarget.first_name} ${deleteTarget.last_name}`;
-    if (deleteConfirm !== fullName) {
+  // Soft delete — sets status to 'deactivated'
+  const handleDeactivateConfirm = async () => {
+    if (!deactivateTarget) return;
+    const fullName = `${deactivateTarget.first_name} ${deactivateTarget.last_name}`;
+    if (deactivateConfirm !== fullName) {
       toast({ title: "Name does not match", description: `Type exactly: ${fullName}`, variant: "destructive" });
       return;
     }
-    setDeleteLoading(true);
+    setDeactivateLoading(true);
     try {
-      // Delete linked documents first
-      await supabase.from("partner_documents").delete().eq("application_id", deleteTarget.id);
-      // Delete contracts
-      await supabase.from("partner_contracts").delete().eq("application_id", deleteTarget.id);
-      // Delete application
-      const { error } = await supabase.from("partner_applications").delete().eq("id", deleteTarget.id);
+      const { error } = await supabase
+        .from("partner_applications")
+        .update({ status: "deactivated" })
+        .eq("id", deactivateTarget.id);
       if (error) throw error;
-      toast({ title: "Partner removed", description: `${fullName} has been permanently deleted.` });
-      setShowDelete(false);
-      setDeleteTarget(null);
-      setDeleteConfirm("");
+      toast({ title: "Partner deactivated", description: `${fullName} has been deactivated and moved to the archive.` });
+      setShowDeactivate(false);
+      setDeactivateTarget(null);
+      setDeactivateConfirm("");
       loadPartners();
     } catch (err: any) {
-      toast({ title: "Delete failed", description: err.message, variant: "destructive" });
+      toast({ title: "Deactivation failed", description: err.message, variant: "destructive" });
     } finally {
-      setDeleteLoading(false);
+      setDeactivateLoading(false);
     }
   };
 
-  const filtered = partners.filter(p => {
+  const handleReactivate = async () => {
+    if (!reactivateTarget) return;
+    setReactivateLoading(true);
+    try {
+      const { error } = await supabase
+        .from("partner_applications")
+        .update({ status: "pending" })
+        .eq("id", reactivateTarget.id);
+      if (error) throw error;
+      toast({ title: "Partner reactivated", description: `${reactivateTarget.first_name} ${reactivateTarget.last_name} is now Pending.` });
+      setShowReactivate(false);
+      setReactivateTarget(null);
+      loadPartners();
+    } catch (err: any) {
+      toast({ title: "Reactivation failed", description: err.message, variant: "destructive" });
+    } finally {
+      setReactivateLoading(false);
+    }
+  };
+
+  // Hard wipe — deletes ALL partner data permanently
+  const handleCleanDatabase = async () => {
+    if (cleanConfirm !== "CLEAN DATABASE") {
+      toast({ title: "Confirmation text does not match", description: 'Type exactly: CLEAN DATABASE', variant: "destructive" });
+      return;
+    }
+    setCleanLoading(true);
+    try {
+      // Delete in dependency order
+      await supabase.from("partner_documents").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      await supabase.from("partner_contracts").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      const { error } = await supabase.from("partner_applications").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      if (error) throw error;
+      toast({ title: "Database cleaned", description: "All partner records have been permanently deleted." });
+      setShowClean(false);
+      setCleanConfirm("");
+      loadPartners();
+    } catch (err: any) {
+      toast({ title: "Clean failed", description: err.message, variant: "destructive" });
+    } finally {
+      setCleanLoading(false);
+    }
+  };
+
+  const activePartners     = partners.filter(p => p.status !== "deactivated");
+  const deactivatedPartners = partners.filter(p => p.status === "deactivated");
+
+  const filtered = activePartners.filter(p => {
     const matchSearch = !searchTerm ||
       `${p.first_name} ${p.last_name} ${p.email} ${p.city ?? ""} ${p.wolt_partner_id ?? ""}`.toLowerCase().includes(searchTerm.toLowerCase());
     const matchStatus = statusFilter === "all" || p.status === statusFilter;
@@ -166,10 +226,85 @@ export default function AdminPartners() {
   });
 
   const statusCounts = {
-    active:   partners.filter(p => p.status === "active").length,
-    pending:  partners.filter(p => ["pending", "email_verified"].includes(p.status)).length,
-    inReview: partners.filter(p => ["under_review", "verified", "contract_sent", "contract_signed"].includes(p.status)).length,
-    rejected: partners.filter(p => p.status === "rejected").length,
+    active:   activePartners.filter(p => p.status === "active").length,
+    pending:  activePartners.filter(p => ["pending", "email_verified"].includes(p.status)).length,
+    inReview: activePartners.filter(p => ["under_review", "verified", "contract_sent", "contract_signed"].includes(p.status)).length,
+    rejected: activePartners.filter(p => p.status === "rejected").length,
+  };
+
+  const PartnerRow = ({ p, isDeactivated = false }: { p: Partner; isDeactivated?: boolean }) => {
+    const initials    = `${p.first_name?.[0] ?? ""}${p.last_name?.[0] ?? ""}`.toUpperCase();
+    const statusColor = STATUS_COLORS[p.status] ?? "bg-gray-100 text-gray-700";
+    const statusLabel = STATUS_LABELS[p.status] ?? p.status;
+    return (
+      <TableRow key={p.id} className={isDeactivated ? "opacity-60 hover:opacity-80 hover:bg-muted/30" : "hover:bg-muted/50"}>
+        <TableCell>
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary shrink-0">
+              {initials}
+            </div>
+            <div>
+              <p className="font-medium text-sm">{p.first_name} {p.last_name}</p>
+              {p.wolt_partner_id && <p className="text-xs text-muted-foreground font-mono">Wolt: {p.wolt_partner_id}</p>}
+            </div>
+          </div>
+        </TableCell>
+        <TableCell>
+          <div className="text-sm">
+            <p className="flex items-center gap-1 text-muted-foreground"><Mail className="h-3 w-3" /> {p.email}</p>
+            {p.phone && <p className="flex items-center gap-1 text-muted-foreground mt-0.5"><Phone className="h-3 w-3" /> {p.phone}</p>}
+          </div>
+        </TableCell>
+        <TableCell>
+          {p.city ? (
+            <span className="flex items-center gap-1 text-sm"><MapPin className="h-3.5 w-3.5 text-muted-foreground" /> {p.city}</span>
+          ) : <span className="text-muted-foreground text-sm">—</span>}
+        </TableCell>
+        <TableCell className="text-sm">
+          {p.transport ? `${TRANSPORT_ICON[p.transport] ?? ""} ${p.transport.charAt(0).toUpperCase() + p.transport.slice(1)}` : "—"}
+        </TableCell>
+        <TableCell>
+          <span className={`inline-flex items-center text-xs font-medium px-2.5 py-0.5 rounded-full border ${statusColor}`}>
+            {statusLabel}
+          </span>
+        </TableCell>
+        <TableCell className="text-sm text-muted-foreground">
+          {new Date(p.created_at).toLocaleDateString("sv-SE")}
+        </TableCell>
+        <TableCell>
+          <div className="flex items-center gap-1">
+            {isDeactivated ? (
+              <Button
+                variant="ghost" size="sm"
+                className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                onClick={() => { setReactivateTarget(p); setShowReactivate(true); }}
+                title="Reactivate partner"
+              >
+                <RotateCcw className="h-3.5 w-3.5 mr-1" /> Reactivate
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="ghost" size="sm"
+                  onClick={() => navigate("/portal/verification")}
+                  title="View in Verification"
+                >
+                  <Eye className="h-3.5 w-3.5 mr-1" /> View
+                </Button>
+                <Button
+                  variant="ghost" size="icon"
+                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                  title="Deactivate partner"
+                  onClick={() => { setDeactivateTarget(p); setDeactivateConfirm(""); setShowDeactivate(true); }}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </>
+            )}
+          </div>
+        </TableCell>
+      </TableRow>
+    );
   };
 
   return (
@@ -178,11 +313,24 @@ export default function AdminPartners() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Partner Management</h1>
-          <p className="text-base text-muted-foreground mt-1">All registered delivery partners — {partners.length} total</p>
+          <p className="text-base text-muted-foreground mt-1">
+            {activePartners.length} active partners
+            {deactivatedPartners.length > 0 && ` · ${deactivatedPartners.length} deactivated`}
+          </p>
         </div>
-        <Button size="lg" onClick={() => setShowAdd(true)}>
-          <UserPlus className="mr-2 h-4 w-4" /> Add Partner
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="lg"
+            className="border-destructive/40 text-destructive hover:bg-destructive/5 hover:border-destructive"
+            onClick={() => { setCleanConfirm(""); setShowClean(true); }}
+          >
+            <DatabaseZap className="mr-2 h-4 w-4" /> Clean Database
+          </Button>
+          <Button size="lg" onClick={() => setShowAdd(true)}>
+            <UserPlus className="mr-2 h-4 w-4" /> Add Partner
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -222,7 +370,7 @@ export default function AdminPartners() {
         </Select>
       </div>
 
-      {/* Table */}
+      {/* Active Partners Table */}
       {loading ? (
         <div className="flex items-center justify-center h-32"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
       ) : filtered.length === 0 ? (
@@ -243,71 +391,46 @@ export default function AdminPartners() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map(p => {
-                  const initials = `${p.first_name?.[0] ?? ""}${p.last_name?.[0] ?? ""}`.toUpperCase();
-                  const statusColor = STATUS_COLORS[p.status] ?? "bg-gray-100 text-gray-700";
-                  const statusLabel = STATUS_LABELS[p.status] ?? p.status;
-                  return (
-                    <TableRow key={p.id} className="hover:bg-muted/50">
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary shrink-0">
-                            {initials}
-                          </div>
-                          <div>
-                            <p className="font-medium text-sm">{p.first_name} {p.last_name}</p>
-                            {p.wolt_partner_id && <p className="text-xs text-muted-foreground font-mono">Wolt: {p.wolt_partner_id}</p>}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
-                          <p className="flex items-center gap-1 text-muted-foreground"><Mail className="h-3 w-3" /> {p.email}</p>
-                          {p.phone && <p className="flex items-center gap-1 text-muted-foreground mt-0.5"><Phone className="h-3 w-3" /> {p.phone}</p>}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {p.city ? (
-                          <span className="flex items-center gap-1 text-sm"><MapPin className="h-3.5 w-3.5 text-muted-foreground" /> {p.city}</span>
-                        ) : <span className="text-muted-foreground text-sm">—</span>}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {p.transport ? `${TRANSPORT_ICON[p.transport] ?? ""} ${p.transport.charAt(0).toUpperCase() + p.transport.slice(1)}` : "—"}
-                      </TableCell>
-                      <TableCell>
-                        <span className={`inline-flex items-center text-xs font-medium px-2.5 py-0.5 rounded-full border ${statusColor}`}>
-                          {statusLabel}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {new Date(p.created_at).toLocaleDateString("sv-SE")}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost" size="sm"
-                            onClick={() => navigate("/portal/verification")}
-                            title="View in Verification"
-                          >
-                            <Eye className="h-3.5 w-3.5 mr-1" /> View
-                          </Button>
-                          <Button
-                            variant="ghost" size="icon"
-                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                            title="Delete partner"
-                            onClick={() => { setDeleteTarget(p); setDeleteConfirm(""); setShowDelete(true); }}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                {filtered.map(p => <PartnerRow key={p.id} p={p} />)}
               </TableBody>
             </Table>
           </CardContent>
         </Card>
+      )}
+
+      {/* Deactivated Partners — collapsible section at the bottom */}
+      {deactivatedPartners.length > 0 && (
+        <div>
+          <button
+            className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors mb-3"
+            onClick={() => setShowDeactivated(v => !v)}
+          >
+            {showDeactivated ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            Deactivated Partners ({deactivatedPartners.length})
+          </button>
+          {showDeactivated && (
+            <Card className="border-dashed border-gray-300">
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/30">
+                      <TableHead>Partner</TableHead>
+                      <TableHead>Contact</TableHead>
+                      <TableHead>Location</TableHead>
+                      <TableHead>Transport</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Joined</TableHead>
+                      <TableHead></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {deactivatedPartners.map(p => <PartnerRow key={p.id} p={p} isDeactivated />)}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </div>
       )}
 
       {/* Add Partner Dialog */}
@@ -381,46 +504,121 @@ export default function AdminPartners() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={showDelete} onOpenChange={v => { setShowDelete(v); if (!v) setDeleteConfirm(""); }}>
+      {/* Deactivate Confirmation Dialog */}
+      <Dialog open={showDeactivate} onOpenChange={v => { setShowDeactivate(v); if (!v) setDeactivateConfirm(""); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
-              <AlertTriangle className="h-5 w-5" /> Delete Partner
+              <AlertTriangle className="h-5 w-5" /> Deactivate Partner
             </DialogTitle>
             <DialogDescription>
-              This permanently deletes the partner record, all their documents, and contracts. This action <strong>cannot be undone</strong>.
+              The partner record will be archived and moved to the deactivated list. You can reactivate them at any time.
             </DialogDescription>
           </DialogHeader>
-          {deleteTarget && (
+          {deactivateTarget && (
             <div className="space-y-4">
               <div className="p-4 rounded-xl bg-destructive/5 border border-destructive/20">
-                <p className="text-sm font-semibold">{deleteTarget.first_name} {deleteTarget.last_name}</p>
-                <p className="text-xs text-muted-foreground">{deleteTarget.email}</p>
-                <p className="text-xs text-muted-foreground mt-1">Status: {STATUS_LABELS[deleteTarget.status] ?? deleteTarget.status}</p>
+                <p className="text-sm font-semibold">{deactivateTarget.first_name} {deactivateTarget.last_name}</p>
+                <p className="text-xs text-muted-foreground">{deactivateTarget.email}</p>
+                <p className="text-xs text-muted-foreground mt-1">Status: {STATUS_LABELS[deactivateTarget.status] ?? deactivateTarget.status}</p>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-sm">
-                  Type <strong>{deleteTarget.first_name} {deleteTarget.last_name}</strong> to confirm deletion:
+                  Type <strong>{deactivateTarget.first_name} {deactivateTarget.last_name}</strong> to confirm:
                 </Label>
                 <Input
-                  value={deleteConfirm}
-                  onChange={e => setDeleteConfirm(e.target.value)}
-                  placeholder={`${deleteTarget.first_name} ${deleteTarget.last_name}`}
-                  className={deleteConfirm && deleteConfirm !== `${deleteTarget.first_name} ${deleteTarget.last_name}` ? "border-destructive" : ""}
+                  value={deactivateConfirm}
+                  onChange={e => setDeactivateConfirm(e.target.value)}
+                  placeholder={`${deactivateTarget.first_name} ${deactivateTarget.last_name}`}
+                  className={deactivateConfirm && deactivateConfirm !== `${deactivateTarget.first_name} ${deactivateTarget.last_name}` ? "border-destructive" : ""}
                 />
               </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setShowDelete(false); setDeleteConfirm(""); }}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setShowDeactivate(false); setDeactivateConfirm(""); }}>Cancel</Button>
             <Button
               variant="destructive"
-              onClick={handleDeleteConfirm}
-              disabled={deleteLoading || !deleteTarget || deleteConfirm !== `${deleteTarget.first_name} ${deleteTarget.last_name}`}
+              onClick={handleDeactivateConfirm}
+              disabled={deactivateLoading || !deactivateTarget || deactivateConfirm !== `${deactivateTarget.first_name} ${deactivateTarget.last_name}`}
             >
-              {deleteLoading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Trash2 className="mr-1.5 h-4 w-4" />}
-              Delete Permanently
+              {deactivateLoading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Trash2 className="mr-1.5 h-4 w-4" />}
+              Deactivate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reactivate Confirmation Dialog */}
+      <Dialog open={showReactivate} onOpenChange={v => { setShowReactivate(v); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-emerald-600">
+              <RotateCcw className="h-5 w-5" /> Reactivate Partner
+            </DialogTitle>
+            <DialogDescription>
+              This will restore the partner to <strong>Pending</strong> status so they can continue through the verification flow.
+            </DialogDescription>
+          </DialogHeader>
+          {reactivateTarget && (
+            <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200">
+              <p className="text-sm font-semibold">{reactivateTarget.first_name} {reactivateTarget.last_name}</p>
+              <p className="text-xs text-muted-foreground">{reactivateTarget.email}</p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowReactivate(false)}>Cancel</Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={handleReactivate}
+              disabled={reactivateLoading}
+            >
+              {reactivateLoading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <RotateCcw className="mr-1.5 h-4 w-4" />}
+              Reactivate Partner
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Clean Database Dialog */}
+      <Dialog open={showClean} onOpenChange={v => { setShowClean(v); if (!v) setCleanConfirm(""); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <ShieldAlert className="h-5 w-5" /> Clean Database
+            </DialogTitle>
+            <DialogDescription>
+              <strong className="text-destructive">Pre-handover only.</strong> This permanently and irreversibly deletes <strong>all</strong> partner applications, documents, and contracts from the database. There is no undo.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="p-4 rounded-xl bg-destructive/5 border border-destructive/20 text-sm space-y-1">
+              <p className="font-semibold text-destructive">What will be deleted:</p>
+              <p className="text-muted-foreground">• All partner applications ({partners.length} records)</p>
+              <p className="text-muted-foreground">• All uploaded partner documents</p>
+              <p className="text-muted-foreground">• All partner contracts</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm">
+                Type <strong>CLEAN DATABASE</strong> to confirm:
+              </Label>
+              <Input
+                value={cleanConfirm}
+                onChange={e => setCleanConfirm(e.target.value)}
+                placeholder="CLEAN DATABASE"
+                className={cleanConfirm && cleanConfirm !== "CLEAN DATABASE" ? "border-destructive" : ""}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowClean(false); setCleanConfirm(""); }}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={handleCleanDatabase}
+              disabled={cleanLoading || cleanConfirm !== "CLEAN DATABASE"}
+            >
+              {cleanLoading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <DatabaseZap className="mr-1.5 h-4 w-4" />}
+              Wipe All Data
             </Button>
           </DialogFooter>
         </DialogContent>
