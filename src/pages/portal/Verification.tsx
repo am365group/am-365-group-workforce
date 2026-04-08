@@ -57,9 +57,12 @@ const REJECTION_REASONS = [
 type PartnerDoc = {
   id: string;
   document_type: string;
+  doc_category: string | null;
   file_url: string;
   status: string;
   rejection_reason: string | null;
+  id_number: string | null;
+  expiry_date: string | null;
 };
 
 type Contract = {
@@ -141,6 +144,9 @@ export default function AdminVerification() {
   const [docPreviewUrl, setDocPreviewUrl] = useState<string | null>(null);
   const [docPreviewIsPdf, setDocPreviewIsPdf] = useState(false);
   const [showInfoDialog, setShowInfoDialog] = useState(false);
+  // Per-document admin-entered ID number and expiry date
+  const [docIdNumbers, setDocIdNumbers] = useState<Record<string, string>>({});
+  const [docExpiryDates, setDocExpiryDates] = useState<Record<string, string>>({});
   const [verifyChecks, setVerifyChecks] = useState({
     id_verified: false,
     address_verified: false,
@@ -195,10 +201,20 @@ export default function AdminVerification() {
     // Load submitted documents for this application
     const { data: docs } = await supabase
       .from("partner_documents")
-      .select("id, document_type, file_url, status, rejection_reason")
+      .select("id, document_type, doc_category, file_url, status, rejection_reason, id_number, expiry_date")
       .eq("application_id", app.id);
-    setPartnerDocs(docs || []);
-    loadDocThumbnails(docs || []);
+    const docList = (docs as PartnerDoc[]) || [];
+    setPartnerDocs(docList);
+    loadDocThumbnails(docList);
+    // Pre-fill admin-entered values
+    const ids: Record<string, string> = {};
+    const expiries: Record<string, string> = {};
+    for (const d of docList) {
+      if (d.id_number) ids[d.id] = d.id_number;
+      if (d.expiry_date) expiries[d.id] = d.expiry_date;
+    }
+    setDocIdNumbers(ids);
+    setDocExpiryDates(expiries);
   };
 
   const handleDocPreview = async (doc: PartnerDoc) => {
@@ -352,15 +368,54 @@ export default function AdminVerification() {
     }
   };
 
+  const handleVerifyDoc = async (doc: PartnerDoc) => {
+    const idNum    = docIdNumbers[doc.id]?.trim() || null;
+    const expiryDt = docExpiryDates[doc.id] || null;
+    const { data: { user } } = await supabase.auth.getUser();
+    const { error } = await supabase.from("partner_documents").update({
+      status:      "verified",
+      id_number:   idNum,
+      expiry_date: expiryDt || null,
+      verified_by: user?.id ?? null,
+      verified_at: new Date().toISOString(),
+      rejection_reason: null,
+    }).eq("id", doc.id);
+    if (error) {
+      toast({ title: "Verification failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    // If Skatteverket doc and admin entered an id_number → save to partner_applications.personal_number
+    if ((doc.doc_category === "skatteverket_id" || doc.document_type === "skatt_id") && idNum && selectedApp) {
+      await supabase.from("partner_applications")
+        .update({ personal_number: idNum })
+        .eq("id", selectedApp.id);
+    }
+    toast({ title: "Document verified ✓" });
+    if (selectedApp) handleReview(selectedApp);
+  };
+
+  const handleRejectDoc = async (doc: PartnerDoc, reason: string) => {
+    const { error } = await supabase.from("partner_documents").update({
+      status: "rejected",
+      rejection_reason: reason,
+    }).eq("id", doc.id);
+    if (error) {
+      toast({ title: "Rejection failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: "Document rejected" });
+    if (selectedApp) handleReview(selectedApp);
+  };
+
   const handleViewInfo = async (app: Application) => {
     setSelectedApp(app);
     setDocPreviewUrl(null);
     const { data: docs } = await supabase
       .from("partner_documents")
-      .select("id, document_type, file_url, status, rejection_reason")
+      .select("id, document_type, doc_category, file_url, status, rejection_reason, id_number, expiry_date")
       .eq("application_id", app.id);
-    setPartnerDocs(docs || []);
-    loadDocThumbnails(docs || []);
+    setPartnerDocs((docs as PartnerDoc[]) || []);
+    loadDocThumbnails((docs as PartnerDoc[]) || []);
     setShowInfoDialog(true);
   };
 
@@ -699,15 +754,73 @@ export default function AdminVerification() {
                             <FileText className="h-8 w-8 text-muted-foreground" />
                           </div>
                         )}
-                        {/* Doc info bar */}
-                        <div className="flex items-center justify-between px-3 py-2 border-t bg-card">
-                          <div>
-                            <p className="text-sm font-medium capitalize">{doc.document_type.replace(/_/g, " ")}</p>
-                            <p className="text-xs text-muted-foreground font-mono">{doc.file_url.split("/").pop()}</p>
+                        {/* Doc info + admin input bar */}
+                        <div className="px-3 py-3 border-t bg-card space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium capitalize">
+                                {(doc.doc_category ?? doc.document_type).replace(/_/g, " ")}
+                              </p>
+                              <p className="text-xs text-muted-foreground font-mono">{doc.file_url.split("/").pop()}</p>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Badge variant={doc.status === "verified" ? "default" : doc.status === "rejected" ? "destructive" : "secondary"} className="text-xs">
+                                {doc.status === "uploaded" ? "Pending" : doc.status}
+                              </Badge>
+                              <Button variant="ghost" size="sm" onClick={() => handleDocPreview(doc)}>
+                                <Eye className="h-3.5 w-3.5 mr-1" /> View
+                              </Button>
+                            </div>
                           </div>
-                          <Button variant="ghost" size="sm" onClick={() => handleDocPreview(doc)}>
-                            <Eye className="h-3.5 w-3.5 mr-1" /> View
-                          </Button>
+                          {/* Admin input fields */}
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">
+                                {doc.doc_category === "skatteverket_id" ? "Personnummer / ID Number" : "Licence Number"}
+                              </Label>
+                              <Input
+                                placeholder={doc.doc_category === "skatteverket_id" ? "YYYYMMDD-XXXX" : "Licence number"}
+                                value={docIdNumbers[doc.id] ?? ""}
+                                onChange={e => setDocIdNumbers(prev => ({ ...prev, [doc.id]: e.target.value }))}
+                                className="h-8 text-sm font-mono"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">Expiry Date</Label>
+                              <Input
+                                type="date"
+                                value={docExpiryDates[doc.id] ?? ""}
+                                onChange={e => setDocExpiryDates(prev => ({ ...prev, [doc.id]: e.target.value }))}
+                                className="h-8 text-sm"
+                              />
+                            </div>
+                          </div>
+                          {/* Per-doc actions */}
+                          {doc.status !== "verified" && (
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm" variant="outline"
+                                className="text-primary border-primary/30 hover:bg-primary/5 flex-1"
+                                onClick={() => handleVerifyDoc(doc)}
+                              >
+                                <CheckCircle className="h-3.5 w-3.5 mr-1" /> Verify Document
+                              </Button>
+                              <Button
+                                size="sm" variant="outline"
+                                className="text-destructive border-destructive/30 hover:bg-destructive/5"
+                                onClick={() => handleRejectDoc(doc, REJECTION_REASONS.find(r => r.value === rejectionCode)?.label ?? rejectionCode)}
+                              >
+                                <XCircle className="h-3.5 w-3.5 mr-1" /> Reject
+                              </Button>
+                            </div>
+                          )}
+                          {doc.status === "verified" && (
+                            <p className="text-xs text-primary flex items-center gap-1">
+                              <CheckCircle className="h-3 w-3" /> Verified
+                              {doc.id_number && ` · ID: ${doc.id_number}`}
+                              {doc.expiry_date && ` · Expires ${new Date(doc.expiry_date).toLocaleDateString("sv-SE")}`}
+                            </p>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -959,15 +1072,73 @@ export default function AdminVerification() {
                             <FileText className="h-8 w-8 text-muted-foreground" />
                           </div>
                         )}
-                        {/* Doc info bar */}
-                        <div className="flex items-center justify-between px-3 py-2 border-t bg-card">
-                          <div>
-                            <p className="text-sm font-medium capitalize">{doc.document_type.replace(/_/g, " ")}</p>
-                            <p className="text-xs text-muted-foreground font-mono">{doc.file_url.split("/").pop()}</p>
+                        {/* Doc info + admin input bar */}
+                        <div className="px-3 py-3 border-t bg-card space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium capitalize">
+                                {(doc.doc_category ?? doc.document_type).replace(/_/g, " ")}
+                              </p>
+                              <p className="text-xs text-muted-foreground font-mono">{doc.file_url.split("/").pop()}</p>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Badge variant={doc.status === "verified" ? "default" : doc.status === "rejected" ? "destructive" : "secondary"} className="text-xs">
+                                {doc.status === "uploaded" ? "Pending" : doc.status}
+                              </Badge>
+                              <Button variant="ghost" size="sm" onClick={() => handleDocPreview(doc)}>
+                                <Eye className="h-3.5 w-3.5 mr-1" /> View
+                              </Button>
+                            </div>
                           </div>
-                          <Button variant="ghost" size="sm" onClick={() => handleDocPreview(doc)}>
-                            <Eye className="h-3.5 w-3.5 mr-1" /> View
-                          </Button>
+                          {/* Admin input fields */}
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">
+                                {doc.doc_category === "skatteverket_id" ? "Personnummer / ID Number" : "Licence Number"}
+                              </Label>
+                              <Input
+                                placeholder={doc.doc_category === "skatteverket_id" ? "YYYYMMDD-XXXX" : "Licence number"}
+                                value={docIdNumbers[doc.id] ?? ""}
+                                onChange={e => setDocIdNumbers(prev => ({ ...prev, [doc.id]: e.target.value }))}
+                                className="h-8 text-sm font-mono"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">Expiry Date</Label>
+                              <Input
+                                type="date"
+                                value={docExpiryDates[doc.id] ?? ""}
+                                onChange={e => setDocExpiryDates(prev => ({ ...prev, [doc.id]: e.target.value }))}
+                                className="h-8 text-sm"
+                              />
+                            </div>
+                          </div>
+                          {/* Per-doc actions */}
+                          {doc.status !== "verified" && (
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm" variant="outline"
+                                className="text-primary border-primary/30 hover:bg-primary/5 flex-1"
+                                onClick={() => handleVerifyDoc(doc)}
+                              >
+                                <CheckCircle className="h-3.5 w-3.5 mr-1" /> Verify Document
+                              </Button>
+                              <Button
+                                size="sm" variant="outline"
+                                className="text-destructive border-destructive/30 hover:bg-destructive/5"
+                                onClick={() => handleRejectDoc(doc, REJECTION_REASONS.find(r => r.value === rejectionCode)?.label ?? rejectionCode)}
+                              >
+                                <XCircle className="h-3.5 w-3.5 mr-1" /> Reject
+                              </Button>
+                            </div>
+                          )}
+                          {doc.status === "verified" && (
+                            <p className="text-xs text-primary flex items-center gap-1">
+                              <CheckCircle className="h-3 w-3" /> Verified
+                              {doc.id_number && ` · ID: ${doc.id_number}`}
+                              {doc.expiry_date && ` · Expires ${new Date(doc.expiry_date).toLocaleDateString("sv-SE")}`}
+                            </p>
+                          )}
                         </div>
                       </div>
                     ))}

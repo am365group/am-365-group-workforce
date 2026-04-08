@@ -171,7 +171,7 @@ export default function PartnerProfile() {
   const initials = `${app.first_name?.[0] ?? ""}${app.last_name?.[0] ?? ""}`.toUpperCase();
   const maskedPN = app.personal_number
     ? app.personal_number.slice(0, 6) + "-****"
-    : "—";
+    : null;
 
   return (
     <div className="space-y-8 animate-fade-in max-w-3xl">
@@ -236,8 +236,20 @@ export default function PartnerProfile() {
             <Label className="text-sm font-medium flex items-center gap-1.5">
               <Shield className="h-3.5 w-3.5" /> Personal Number (Personnummer)
             </Label>
-            <Input value={maskedPN} disabled className="h-11 bg-muted font-mono" />
-            <p className="text-xs text-muted-foreground">Verified during registration. Cannot be changed.</p>
+            {maskedPN ? (
+              <>
+                <Input value={maskedPN} disabled className="h-11 bg-muted font-mono" />
+                <p className="text-xs text-muted-foreground">Stored securely. Visible only to AM:365 administrators.</p>
+              </>
+            ) : (
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
+                <p className="text-xs text-muted-foreground">
+                  Not yet provided. Upload your <strong>Skatteverket ID</strong> document in the{" "}
+                  <a href="/partner/documents" className="text-primary font-medium hover:underline">Documents</a> section to submit your ID number.
+                </p>
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-5">
             <div className="space-y-2">
