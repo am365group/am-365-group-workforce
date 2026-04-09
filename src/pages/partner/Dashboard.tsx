@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   DollarSign, Clock, Calendar, TrendingUp, ArrowUpRight, FileText,
   Truck, MapPin, Star, ChevronRight, Upload, CheckCircle, AlertCircle,
@@ -149,6 +150,7 @@ export default function PartnerDashboard() {
   const [uploading, setUploading] = useState<Record<string, boolean>>({});
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [confirmCheck, setConfirmCheck] = useState(false);
 
   // Tour state
   const [showTour, setShowTour] = useState(false);
@@ -218,7 +220,7 @@ export default function PartnerDashboard() {
   };
 
   const getDoc = (category: string) =>
-    documents.find(d => d.doc_category === category);
+    documents.find(d => d.doc_category === category || d.document_type === category);
 
   /* ── Personnummer validation ────────────────────────────────────── */
   const validatePN = (value: string): string => {
@@ -501,12 +503,18 @@ export default function PartnerDashboard() {
           <div data-tour="welcome-docs">
             <Card>
               <CardHeader>
-                <CardTitle className="text-xl flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-primary" /> Required Documents
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-xl flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-primary" /> Required Documents
+                  </CardTitle>
+                  <Badge variant={allUploaded ? "default" : "outline"} className="text-xs">
+                    {totalUploaded} / {totalRequired} uploaded
+                  </Badge>
+                </div>
                 <p className="text-sm text-muted-foreground">
                   Upload your Skatteverket ID{slots.length > 1 ? " and Driving Licence" : ""}. Accepted formats: PDF, JPG, PNG, WEBP (max 50 MB).
                 </p>
+                <Progress value={(totalUploaded / totalRequired) * 100} className="h-2 mt-2" />
               </CardHeader>
               <CardContent className="space-y-5">
                 {slots.map((slot) => {
@@ -652,29 +660,58 @@ export default function PartnerDashboard() {
                 {!alreadySubmitted && allUploaded && (
                   <div className="flex flex-col items-center gap-4 p-6 rounded-xl bg-primary/5 border border-primary/20">
                     <div className="text-center">
-                      <h3 className="font-semibold text-lg">Ready to submit?</h3>
+                      <CheckCircle className="h-10 w-10 text-primary mx-auto mb-2" />
+                      <h3 className="font-semibold text-lg">All documents uploaded!</h3>
                       <p className="text-muted-foreground text-sm mt-1">
-                        All required documents are uploaded. Submit to start the verification process.
+                        Please confirm that all information is correct and submit for verification.
                       </p>
                     </div>
-                    <Button size="lg" className="w-full md:w-auto px-10" onClick={handleSubmitDocuments} disabled={submitting}>
+                    <label className="flex items-start gap-3 p-4 rounded-xl bg-card border cursor-pointer hover:bg-muted/50 transition-colors w-full max-w-lg">
+                      <Checkbox
+                        checked={confirmCheck}
+                        onCheckedChange={(v) => setConfirmCheck(v === true)}
+                        className="mt-0.5"
+                      />
+                      <span className="text-sm leading-relaxed">
+                        I confirm that all uploaded documents are <strong>authentic and correct</strong>, and the personal information provided is <strong>true and complete</strong>. I understand that falsified documents will result in rejection.
+                      </span>
+                    </label>
+                    <Button
+                      size="lg"
+                      className="w-full md:w-auto px-10"
+                      onClick={handleSubmitDocuments}
+                      disabled={submitting || !confirmCheck}
+                    >
                       {submitting
                         ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting…</>
-                        : <><Send className="mr-2 h-4 w-4" /> Submit Documents for Review</>}
+                        : <><Send className="mr-2 h-4 w-4" /> Submit for Approval</>}
                     </Button>
                   </div>
                 )}
 
                 {/* Submitted / Under review banner */}
                 {alreadySubmitted && !["verified", "contract_sent", "contract_signed", "active"].includes(application?.status) && (
-                  <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
-                    <Clock className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-medium text-amber-700 dark:text-amber-400">Documents submitted — under review</p>
-                      <p className="text-sm text-muted-foreground mt-0.5">
-                        Submitted on {new Date(application.documents_submitted_at).toLocaleDateString("sv-SE")}.
-                        Our team will verify your documents and send your employment contract by email.
-                      </p>
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                      <Clock className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-medium text-amber-700 dark:text-amber-400">Documents submitted — under review</p>
+                        <p className="text-sm text-muted-foreground mt-0.5">
+                          Submitted on {new Date(application.documents_submitted_at).toLocaleDateString("sv-SE")}.
+                          Our team will verify your documents and send your employment contract by email.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3 p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
+                      <Mail className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-medium text-blue-700 dark:text-blue-400">What happens next?</p>
+                        <ol className="text-sm text-muted-foreground mt-1 space-y-1 list-decimal list-inside">
+                          <li>Our verifier reviews your documents (typically 1–2 business days)</li>
+                          <li>Once verified, you'll receive your employment contract by email</li>
+                          <li>Sign the contract and you're ready to start working!</li>
+                        </ol>
+                      </div>
                     </div>
                   </div>
                 )}
