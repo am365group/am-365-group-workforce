@@ -163,9 +163,29 @@ export default function PartnerDashboard() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  useEffect(() => { loadPartnerData(); }, []);
+  useEffect(() => {
+    loadPartnerData();
 
-  const loadPartnerData = async () => {
+    // Real-time: refresh documents when partner_documents changes (e.g. admin verifies)
+    const channel = supabase
+      .channel("partner_dashboard_docs")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "partner_documents" },
+        () => { loadPartnerData(true); }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "partner_applications" },
+        () => { loadPartnerData(true); }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  const loadPartnerData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setIsNewPartner(false); setLoading(false); return; }
@@ -182,15 +202,17 @@ export default function PartnerDashboard() {
         setApplication(app);
         const isNew = !["active", "contract_signed"].includes(app.status);
         setIsNewPartner(isNew);
-        if (app.personal_number) setPersonnummer(app.personal_number);
+        // Only pre-fill personnummer if not already typed by user
+        if (app.personal_number) setPersonnummer(prev => prev || app.personal_number);
 
         const { data: docs } = await supabase
           .from("partner_documents")
           .select("*")
-          .eq("application_id", app.id);
+          .eq("application_id", app.id)
+          .order("created_at", { ascending: false }); // newest first → getDoc() picks latest
         const allDocs = docs || [];
         setDocuments(allDocs);
-        loadThumbnails(allDocs);
+        await loadThumbnails(allDocs); // await so thumbnails are ready on re-render
 
         // Show tour on first login if not already completed
         if (isNew && !localStorage.getItem(TOUR_STORAGE_KEY)) {
@@ -202,7 +224,7 @@ export default function PartnerDashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const loadThumbnails = async (docs: any[]) => {
     const thumbs: Record<string, string> = {};
@@ -285,8 +307,8 @@ export default function PartnerDashboard() {
           status: "uploaded",
         });
       }
-      toast({ title: "Document uploaded", description: "Submitted for review." });
-      await loadPartnerData();
+      toast({ title: "Document uploaded", description: "Document saved. Check progress below." });
+      await loadPartnerData(true); // silent reload — no spinner flash
     } catch (err: any) {
       toast({ title: "Upload failed", description: err.message, variant: "destructive" });
     } finally {
@@ -321,7 +343,7 @@ export default function PartnerDashboard() {
         .eq("id", application.id);
       if (error) throw error;
       toast({ title: "Documents submitted for review", description: "We'll notify you by email once verified." });
-      await loadPartnerData();
+      await loadPartnerData(true);
     } catch (err: any) {
       toast({ title: "Submission failed", description: err.message, variant: "destructive" });
     } finally {

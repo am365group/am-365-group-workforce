@@ -157,6 +157,23 @@ export default function AdminVerification() {
 
   useEffect(() => {
     loadApplications();
+
+    // Real-time subscription — auto-refresh when any application changes
+    const channel = supabase
+      .channel("verification_realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "partner_applications" },
+        () => { loadApplications(); }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "partner_documents" },
+        () => { loadApplications(); }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const loadApplications = async () => {
@@ -634,15 +651,14 @@ export default function AdminVerification() {
                       </div>
                       <div className="flex items-center gap-2">
                         {["pending", "email_verified", "under_review"].includes(app.status) && (
-                          app.documents_submitted_at ? (
-                            <Button variant="outline" size="sm" onClick={() => handleReview(app)}>
-                              <Eye className="mr-1.5 h-3.5 w-3.5" /> Review
-                            </Button>
-                          ) : (
-                            <Button variant="outline" size="sm" disabled className="opacity-50 cursor-not-allowed">
-                              <Clock className="mr-1.5 h-3.5 w-3.5" /> Awaiting Submission
-                            </Button>
-                          )
+                          <Button
+                            variant={app.documents_submitted_at ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => handleReview(app)}
+                          >
+                            <Eye className="mr-1.5 h-3.5 w-3.5" />
+                            {app.documents_submitted_at ? "Review" : "View / Review"}
+                          </Button>
                         )}
                         {["verified", "contract_sent", "contract_signed", "active", "rejected"].includes(app.status) && (
                           <Button variant="outline" size="sm" onClick={() => handleViewInfo(app)}>

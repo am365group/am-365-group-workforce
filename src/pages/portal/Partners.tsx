@@ -191,7 +191,7 @@ export default function AdminPartners() {
     }
   };
 
-  // Hard wipe — deletes ALL partner data permanently (DB + Storage)
+  // Hard wipe — deletes ALL partner data permanently (DB + Storage + Auth users)
   const handleCleanDatabase = async () => {
     if (cleanConfirm !== "CLEAN DATABASE") {
       toast({ title: "Confirmation text does not match", description: 'Type exactly: CLEAN DATABASE', variant: "destructive" });
@@ -199,64 +199,37 @@ export default function AdminPartners() {
     }
     setCleanLoading(true);
     try {
-      // 1. Get all document file paths to delete from storage
+      // Step 1: Collect storage file paths before DB deletion
       const { data: allDocs } = await supabase
         .from("partner_documents")
         .select("file_url");
-      const filePaths = (allDocs || []).map(d => d.file_url).filter(Boolean);
+      const filePaths = (allDocs || []).map((d: any) => d.file_url).filter(Boolean);
 
-      // 2. Delete files from Supabase Storage in batches
-      if (filePaths.length > 0) {
-        // Storage.remove accepts up to 1000 paths at a time
-        for (let i = 0; i < filePaths.length; i += 100) {
-          const batch = filePaths.slice(i, i + 100);
-          await supabase.storage.from("partner-documents").remove(batch);
-        }
+      // Step 2: Delete files from Supabase Storage (in batches of 100)
+      for (let i = 0; i < filePaths.length; i += 100) {
+        await supabase.storage.from("partner-documents").remove(filePaths.slice(i, i + 100));
       }
 
-      // 3. Also try to clear user folders from storage (covers any orphaned files)
+      // Step 3: Sweep all remaining user folders in storage (orphaned files)
       const { data: folders } = await supabase.storage.from("partner-documents").list("", { limit: 1000 });
       if (folders && folders.length > 0) {
         for (const folder of folders) {
-          if (folder.id) {
-            const { data: files } = await supabase.storage.from("partner-documents").list(folder.name, { limit: 1000 });
-            if (files && files.length > 0) {
-              const paths = files.map(f => `${folder.name}/${f.name}`);
-              await supabase.storage.from("partner-documents").remove(paths);
-            }
+          const { data: files } = await supabase.storage.from("partner-documents").list(folder.name, { limit: 1000 });
+          if (files && files.length > 0) {
+            await supabase.storage.from("partner-documents").remove(files.map(f => `${folder.name}/${f.name}`));
           }
         }
       }
 
-      // 4. Delete DB records in dependency order (child tables first)
-      // Get all application IDs first
-      const { data: apps } = await supabase.from("partner_applications").select("id");
-      const appIds = (apps || []).map(a => a.id);
+      // Step 4: Call SECURITY DEFINER function to wipe DB rows AND auth.users
+      const { data: result, error } = await supabase.rpc("admin_clean_all_partner_data");
+      if (error) throw error;
 
-      if (appIds.length > 0) {
-        // Delete customer_partner_links
-        for (const id of appIds) {
-          await supabase.from("customer_partner_links").delete().eq("application_id", id);
-        }
-
-        // Delete documents
-        for (const id of appIds) {
-          await supabase.from("partner_documents").delete().eq("application_id", id);
-        }
-
-        // Delete contracts
-        for (const id of appIds) {
-          await supabase.from("partner_contracts").delete().eq("application_id", id);
-        }
-
-        // Delete applications one by one to avoid RLS issues
-        for (const id of appIds) {
-          const { error } = await supabase.from("partner_applications").delete().eq("id", id);
-          if (error) console.warn("Delete app failed:", id, error.message);
-        }
-      }
-
-      toast({ title: "Database cleaned", description: `Deleted ${appIds.length} partner records and ${filePaths.length} files from storage.` });
+      const deleted = result as { deleted_applications: number; deleted_auth_users: number };
+      toast({
+        title: "Database cleaned",
+        description: `Deleted ${deleted.deleted_applications} partner records, ${deleted.deleted_auth_users} auth accounts, and ${filePaths.length} storage files.`,
+      });
       setShowClean(false);
       setCleanConfirm("");
       loadPartners();
