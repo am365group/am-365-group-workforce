@@ -11,15 +11,15 @@ import {
 } from "@/components/ui/sidebar";
 
 const navItems = [
-  { title: "Dashboard", url: "/partner/dashboard", icon: LayoutDashboard },
-  { title: "Schedule", url: "/partner/schedule", icon: Calendar },
-  { title: "My Profile", url: "/partner/profile", icon: User },
-  { title: "Contract", url: "/partner/contract", icon: FileText },
-  { title: "Work History", url: "/partner/work-history", icon: Clock },
-  { title: "Payslips", url: "/partner/payslips", icon: Receipt },
-  { title: "Documents", url: "/partner/documents", icon: FolderOpen },
-  { title: "Notifications", url: "/partner/notifications", icon: Bell },
-  { title: "Support", url: "/partner/support", icon: HelpCircle },
+  { title: "Dashboard", url: "/partner/dashboard", icon: LayoutDashboard, tourId: "tour-dashboard" },
+  { title: "Schedule", url: "/partner/schedule", icon: Calendar, tourId: "tour-schedule" },
+  { title: "My Profile", url: "/partner/profile", icon: User, tourId: "tour-profile" },
+  { title: "Contract", url: "/partner/contract", icon: FileText, tourId: "tour-contract" },
+  { title: "Work History", url: "/partner/work-history", icon: Clock, tourId: "tour-work-history" },
+  { title: "Payslips", url: "/partner/payslips", icon: Receipt, tourId: "tour-payslips" },
+  { title: "Documents", url: "/partner/documents", icon: FolderOpen, tourId: "tour-documents" },
+  { title: "Notifications", url: "/partner/notifications", icon: Bell, tourId: "tour-notifications" },
+  { title: "Support", url: "/partner/support", icon: HelpCircle, tourId: "tour-support" },
 ];
 
 export function PartnerSidebar() {
@@ -51,7 +51,7 @@ export function PartnerSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
+                <SidebarMenuItem key={item.title} data-tour={item.tourId}>
                   <SidebarMenuButton asChild isActive={location.pathname === item.url}>
                     <NavLink
                       to={item.url}
