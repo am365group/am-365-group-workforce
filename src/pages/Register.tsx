@@ -56,12 +56,10 @@ export default function Register() {
     const timer = setTimeout(async () => {
       setEmailChecking(true);
       try {
-        const { data, error } = await supabase
-          .from("partner_applications")
-          .select("id")
-          .eq("email", form.email.trim().toLowerCase())
-          .maybeSingle();
-        if (!error && data) {
+        const { data, error } = await supabase.rpc("check_email_registered", {
+          p_email: form.email.trim().toLowerCase(),
+        });
+        if (!error && data === true) {
           setEmailError("This email is already registered. Please sign in or use a different email.");
         }
       } catch { /* ignore */ } finally {
@@ -121,23 +119,21 @@ export default function Register() {
     if (step < STEPS.length - 1) { goNext(); return; }
     if (!validate()) return;
 
-    // Final email check before submitting
+    // Final email check before submitting (catches auth.users + partner_applications)
     setIsSubmitting(true);
     try {
-      const { data: existing } = await supabase
-        .from("partner_applications")
-        .select("id")
-        .eq("email", form.email.trim().toLowerCase())
-        .maybeSingle();
+      const { data: alreadyExists } = await supabase.rpc("check_email_registered", {
+        p_email: form.email.trim().toLowerCase(),
+      });
 
-      if (existing) {
+      if (alreadyExists === true) {
         toast({
           title: "Email already registered",
           description: "This email address is already registered. Please sign in.",
           variant: "destructive",
         });
         setStep(0);
-        setEmailError("This email is already registered.");
+        setEmailError("This email is already registered. Please sign in or use a different email.");
         return;
       }
 
