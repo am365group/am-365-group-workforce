@@ -507,7 +507,7 @@ export default function PartnerDashboard() {
                     "text-amber-500"
                   }`} />
                 </div>
-                <div>
+                <div className="flex-1">
                   <h3 className="text-lg font-semibold">
                     Status: {application.status.replace(/_/g, " ").replace(/\b\w/g, (l: string) => l.toUpperCase())}
                   </h3>
@@ -515,9 +515,18 @@ export default function PartnerDashboard() {
                     {application.status === "email_verified" && "Your email is verified. Please upload your required documents below."}
                     {application.status === "under_review" && "Your documents are being reviewed by our team. We'll notify you by email when done."}
                     {application.status === "verified" && "Identity verified! Your employment contract is being prepared."}
-                    {application.status === "contract_sent" && "Your contract is ready — check the Contract page to review and sign."}
+                    {application.status === "contract_sent" && "Your contract is ready — review and sign it to complete your onboarding."}
                     {application.status === "pending" && "Please verify your email to continue the onboarding process."}
                   </p>
+                  {application.status === "contract_sent" && (
+                    <Button
+                      size="sm"
+                      className="mt-3"
+                      onClick={() => navigate("/partner/contract")}
+                    >
+                      <FileCheck className="mr-2 h-4 w-4" /> View &amp; Sign Contract →
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -694,7 +703,7 @@ export default function PartnerDashboard() {
                       <Checkbox
                         checked={confirmCheck}
                         onCheckedChange={(v) => setConfirmCheck(v === true)}
-                        className="mt-0.5"
+                        className="mt-0.5 h-6 w-6 rounded-md border-2 data-[state=checked]:bg-primary data-[state=checked]:border-primary shrink-0"
                       />
                       <span className="text-sm leading-relaxed">
                         I confirm that all uploaded documents are <strong>authentic and correct</strong>, and the personal information provided is <strong>true and complete</strong>. I understand that falsified documents will result in rejection.

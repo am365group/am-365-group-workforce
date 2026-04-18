@@ -140,7 +140,7 @@ export default function AdminVerification() {
   const [activeTab, setActiveTab] = useState("pending");
   const [partnerDocs, setPartnerDocs] = useState<PartnerDoc[]>([]);
   const [docThumbnails, setDocThumbnails] = useState<Record<string, string>>({});
-  const [rejectionCode, setRejectionCode] = useState("blurry_photo");
+  const [rejectionCode, setRejectionCode] = useState("");
   const [docPreviewUrl, setDocPreviewUrl] = useState<string | null>(null);
   const [docPreviewIsPdf, setDocPreviewIsPdf] = useState(false);
   const [showInfoDialog, setShowInfoDialog] = useState(false);
@@ -205,7 +205,7 @@ export default function AdminVerification() {
   const handleReview = async (app: Application) => {
     setSelectedApp(app);
     setReviewNotes(app.review_notes || "");
-    setRejectionCode("blurry_photo");
+    setRejectionCode("");
     setDocPreviewUrl(null);
     setVerifyChecks({
       id_verified: app.id_verified ?? false,
@@ -307,6 +307,10 @@ export default function AdminVerification() {
 
   const handleReject = async () => {
     if (!selectedApp) return;
+    if (!rejectionCode) {
+      toast({ title: "Select a rejection reason", description: "Choose a reason from the dropdown before rejecting.", variant: "destructive" });
+      return;
+    }
     const rejectionLabel = REJECTION_REASONS.find(r => r.value === rejectionCode)?.label ?? rejectionCode;
     const fullReason = reviewNotes ? `${rejectionLabel}: ${reviewNotes}` : rejectionLabel;
 
@@ -883,7 +887,7 @@ export default function AdminVerification() {
                         onCheckedChange={(checked) =>
                           setVerifyChecks(prev => ({ ...prev, [item.key]: !!checked }))
                         }
-                        className="h-5 w-5"
+                        className="h-6 w-6 rounded-md border-2 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
                       />
                       <label
                         htmlFor={item.key}
@@ -896,12 +900,15 @@ export default function AdminVerification() {
                 </div>
               </div>
 
-              {/* Rejection Reason (structured) */}
+              {/* Rejection Reason (structured — only required when rejecting) */}
               <div className="space-y-2">
-                <Label className="text-base font-semibold">Rejection Reason</Label>
+                <Label className="text-base font-semibold">
+                  Rejection Reason
+                  <span className="text-xs font-normal text-muted-foreground ml-2">(required only if rejecting)</span>
+                </Label>
                 <Select value={rejectionCode} onValueChange={setRejectionCode}>
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="Select from list..." />
                   </SelectTrigger>
                   <SelectContent>
                     {REJECTION_REASONS.map(r => (
