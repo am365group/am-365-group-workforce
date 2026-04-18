@@ -295,19 +295,21 @@ export default function PartnerDashboard() {
 
       const existingDoc = getDoc(category);
       if (existingDoc) {
-        await supabase.from("partner_documents")
-          .update({ file_url: filePath, status: "uploaded", rejection_reason: null, document_type: category })
+        const { error: dbErr } = await supabase.from("partner_documents")
+          .update({ file_url: filePath, status: "uploaded", rejection_reason: null, document_type: category, doc_category: category })
           .eq("id", existingDoc.id);
+        if (dbErr) throw new Error(`DB update failed: ${dbErr.message}`);
       } else {
-        await supabase.from("partner_documents").insert({
+        const { error: dbErr } = await supabase.from("partner_documents").insert({
           application_id: application.id,
           document_type: category,
           doc_category: category,
           file_url: filePath,
           status: "uploaded",
         });
+        if (dbErr) throw new Error(`DB insert failed: ${dbErr.message}`);
       }
-      toast({ title: "Document uploaded", description: "Document saved. Check progress below." });
+      toast({ title: "Document uploaded ✓", description: "Saved. Progress bar updated below." });
       await loadPartnerData(true); // silent reload — no spinner flash
     } catch (err: any) {
       toast({ title: "Upload failed", description: err.message, variant: "destructive" });
